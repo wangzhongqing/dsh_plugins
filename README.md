@@ -8,6 +8,7 @@ Agent skills 在独立仓库：[**my_skills**](https://github.com/wangzhongqing/
 
 | 插件 | 说明 | 许可证 |
 |---|---|---|
+| [dsh-skill-scope](./dsh-skill-scope/) | 按会话 / 工作区 / 全局三层控制技能目录，不改任何 `SKILL.md` | MIT |
 | [dsh-terminal-locale-font](./dsh-terminal-locale-font/) | 修复 DSH 侧栏终端的方块/问号乱码与 `command not found` | MIT |
 
 ## 安装
@@ -35,6 +36,8 @@ dsh_plugins/
     ├── lib/                       # 插件实现
     │   ├── index.js               # host 入口
     │   └── client.js              # client 入口（经典脚本格式）
+    ├── docs/                      # 产品设计与技术方案
+    ├── scripts/                   # 安装/运维脚本
     ├── test/                      # 测试
     ├── cordis.patch.yml           # bundle patch
     ├── dsh.plugin.json            # 插件清单

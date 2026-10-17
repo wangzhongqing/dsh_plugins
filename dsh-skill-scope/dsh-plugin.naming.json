@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "policy": "dsh-plugin-naming/v1",
+  "plugin": {
+    "namespace": "zhongqing",
+    "name": "skill-scope",
+    "coordinate": "zhongqing/skill-scope",
+    "packageName": "@zhongqing/dsh-skill-scope"
+  },
+  "names": {
+    "pluginNames": ["skill-scope"],
+    "loaderIds": ["zhongqing-skill-scope"],
+    "services": [],
+    "tools": [],
+    "commands": [],
+    "skills": [],
+    "skillProviders": [],
+    "events": [],
+    "settingsNamespaces": [],
+    "routes": [
+      { "kind": "exact", "path": "/api/plugins/zhongqing-skill-scope/state" },
+      { "kind": "exact", "path": "/api/plugins/zhongqing-skill-scope/set" },
+      { "kind": "exact", "path": "/api/plugins/zhongqing-skill-scope/reset" },
+      { "kind": "exact", "path": "/api/plugins/zhongqing-skill-scope/load" }
+    ]
+  }
+}

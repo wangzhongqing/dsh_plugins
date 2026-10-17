@@ -1,0 +1,10 @@
+# @zhongqing/dsh-skill-scope bundle patch
+# Registers the host row that enforces the switches and serves the panel routes.
+# The browser half ships through package.json#dsh.client (`./client`).
+- insert:
+    - id: zhongqing-skill-scope
+      name: '@zhongqing/dsh-skill-scope'
+      config:
+        enabled: true
+        projectRootMarkers:
+          - .git

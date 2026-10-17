@@ -1,0 +1,16 @@
+{
+  "id": "@zhongqing/dsh-skill-scope",
+  "version": "0.1.0",
+  "main": "./lib/index.js",
+  "description": "按会话 / 工作区 / 全局三层控制技能目录：关掉的技能不进入模型目录、不占上下文，且不改动任何 SKILL.md。",
+  "engines": {
+    "dsh": ">=0.1.7-rc.1"
+  },
+  "contributes": {
+    "tools": [],
+    "skills": []
+  },
+  "client": {
+    "main": "./lib/client.js"
+  }
+}

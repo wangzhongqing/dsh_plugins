@@ -1,0 +1,66 @@
+{
+  "name": "@zhongqing/dsh-skill-scope",
+  "version": "0.1.0",
+  "description": "Per-session, per-workspace and global skill switches for DeepSeek Harness: hide a skill from the model catalog without editing any SKILL.md, so a deck workspace and a code workspace stop advertising each other's skills.",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "cordis.patch.yml",
+    "dsh.plugin.json",
+    "dsh-plugin.naming.json",
+    "docs",
+    "README.md",
+    "LICENSE",
+    "scripts"
+  ],
+  "scripts": {
+    "typecheck": "node --check lib/index.js && node --check lib/shared.js && node --check lib/store.js",
+    "static-check": "node --check lib/index.js && node --check lib/shared.js && node --check lib/store.js && node -e \"new (require('node:vm').Script)(require('node:fs').readFileSync('lib/client.js','utf8'))\"",
+    "test": "node --test test/*.test.js",
+    "build": "npm run static-check",
+    "validate": "node /Users/zhongqing/.agents/skills/plugin-write/scripts/validate-names.mjs --manifest ./dsh-plugin.naming.json"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "^4.0.2",
+    "@deepseek-ai/dsh-host-webserver": "^0.1.5-rc.3 || ^0.1.7-rc.1 || ^0.2.0-rc.1",
+    "@deepseek-ai/dsh-skill": "^0.1.5-rc.3 || ^0.1.7-rc.1 || ^0.2.0-rc.1",
+    "@deepseek-ai/schemastery": "^3.18.1"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-ui-slots"
+      ],
+      "platform": "web"
+    },
+    "engines": {
+      "dsh": ">=0.1.7-rc.1"
+    }
+  },
+  "keywords": [
+    "dsh",
+    "deepseek-harness",
+    "plugin",
+    "skill",
+    "skills",
+    "context",
+    "workspace"
+  ],
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  }
+}

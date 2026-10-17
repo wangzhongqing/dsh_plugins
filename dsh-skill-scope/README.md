@@ -44,7 +44,9 @@ desktop profile 由 Electron 应用管理，CLI 拒绝写入。仓库里带了�
 ./scripts/install-desktop.sh
 ```
 
-它会带时间戳备份 `package.json` 与 `cordis.patch.yml`，然后加依赖、加 bundle、加 loader 行；重复运行不会重复添加。手工改的话是这两处：
+它会带时间戳备份两个清单，然后加依赖、加 bundle、加 loader 行，**并把包实际拷进 profile 的 `node_modules`**（只改清单是不够的——宿主按包名从 profile 自己的 `node_modules` 解析），最后验证能从 profile 解析到才返回成功。重复运行不会重复添加。
+
+手工改的话是这三处：
 
 1. `~/.dsh/profiles/desktop/package.json`：
 
@@ -74,7 +76,9 @@ desktop profile 由 Electron 应用管理，CLI 拒绝写入。仓库里带了�
         enabled: true
 ```
 
-改完重启宿主。
+3. 把包拷进 `~/.dsh/profiles/desktop/node_modules/@zhongqing/dsh-skill-scope/`（排除源码树里的 `node_modules`，否则会遮掉宿主的 cordis/dsh 包）。
+
+三步都做完，在 profile 目录里 `node -e "import('@zhongqing/dsh-skill-scope')"` 能成功，才说明装对了。然后重启宿主。
 
 ## 配置
 

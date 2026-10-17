@@ -1,0 +1,16 @@
+{
+  "id": "@zhongqing/dsh-terminal-locale-font",
+  "version": "0.1.1",
+  "main": "./lib/index.js",
+  "description": "修复侧栏/浏览器终端（尤其 zsh）的方块、问号乱码：host 端为终端子进程注入 UTF-8 locale 与登录级 PATH；client 端为 xterm DOM 渲染注入 Nerd Font/CJK 字体栈。",
+  "engines": {
+    "dsh": ">=0.1.7-rc.1"
+  },
+  "contributes": {
+    "tools": [],
+    "skills": []
+  },
+  "client": {
+    "main": "./lib/client.js"
+  }
+}

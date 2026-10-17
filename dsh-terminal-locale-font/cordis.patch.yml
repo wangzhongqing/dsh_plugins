@@ -1,0 +1,13 @@
+# @zhongqing/dsh-terminal-locale-font bundle patch
+# Registers the plugin into the bundle stack when installed via:
+#   dsh plugin --profile <name> add @zhongqing/dsh-terminal-locale-font
+# (the desktop profile is managed by the Electron app, so for that profile this
+# row is applied manually through the profile's own cordis.patch.yml)
+- insert:
+    - id: zhongqing-terminal-locale-font
+      name: '@zhongqing/dsh-terminal-locale-font'
+      config:
+        locale: zh_CN.UTF-8
+        extraPath:
+          - /opt/homebrew/bin
+          - /opt/homebrew/sbin

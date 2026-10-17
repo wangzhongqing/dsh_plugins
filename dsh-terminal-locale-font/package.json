@@ -1,0 +1,61 @@
+{
+  "name": "@zhongqing/dsh-terminal-locale-font",
+  "version": "0.1.1",
+  "description": "Fix garbled boxes/question marks in DeepSeek Harness sidebar terminals: inject a UTF-8 locale and login-shell PATH into terminal spawns (host half), and force a Nerd-Font/CJK-capable font stack onto xterm DOM rows (client half).",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "cordis.patch.yml",
+    "dsh.plugin.json",
+    "dsh-plugin.naming.json",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "typecheck": "node --check lib/index.js && node --check lib/client.js",
+    "static-check": "node --check lib/index.js && node --check lib/client.js && node -e \"new (require('node:vm').Script)(require('node:fs').readFileSync('lib/client.js','utf8'))\"",
+    "test": "node --test test/lib.test.js",
+    "build": "node --check lib/index.js && node --check lib/client.js && node -e \"new (require('node:vm').Script)(require('node:fs').readFileSync('lib/client.js','utf8'))\""
+  },
+  "dependencies": {
+    "@deepseek-ai/schemastery": "^3.18.4"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-client-runtime"
+      ],
+      "platform": "web"
+    },
+    "engines": {
+      "dsh": ">=0.1.7-rc.1"
+    }
+  },
+  "keywords": [
+    "dsh",
+    "deepseek-harness",
+    "plugin",
+    "terminal",
+    "zsh",
+    "locale",
+    "utf-8",
+    "nerd-font",
+    "xterm"
+  ],
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  }
+}

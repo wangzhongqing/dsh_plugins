@@ -1,0 +1,22 @@
+# macOS
+.DS_Store
+._*
+
+# Node
+node_modules/
+npm-debug.log*
+
+# Editors
+.vscode/
+.idea/
+*.swp
+
+# Build artifacts
+dist/
+build/
+*.log
+
+# Local secrets
+.env
+.env.*
+*.local

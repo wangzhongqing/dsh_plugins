@@ -125,7 +125,10 @@ npm run validate  # 命名清单校验（--strict）
 
 测试分五层：纯状态模型、存储、宿主接线、**真 `@deepseek-ai/dsh-skill` 注册表集成**、包契约。第四层是关键的——它证明「在 agent 层注册同名影子能真的把 skill 从该 agent 的目录里摘掉」，而不是证明一个假设。
 
-设计与实现细节见 [`docs/product-design.md`](./docs/product-design.md) 和 [`docs/technical-design.md`](./docs/technical-design.md)。
+设计与实现细节：
+
+- [产品设计](docs/product-design.html) · [技术方案](docs/technical-design.html) —— 带侧栏目录的网页阅读版
+- 纯文本源：[`docs/product-design.md`](./docs/product-design.md) · [`docs/technical-design.md`](./docs/technical-design.md)
 
 ## 已知限制
 

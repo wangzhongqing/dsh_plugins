@@ -1,0 +1,648 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>技能开关 · 产品设计</title>
+<style>
+  :root {
+    --paper: #faf9f7;
+    --paper-raised: #ffffff;
+    --ink: #1a1a18;
+    --ink-soft: #55534e;
+    --ink-faint: #85827b;
+    --rule: #e2ded7;
+    --rule-strong: #cec9c0;
+    --accent: #7a5c2e;
+    --accent-soft: #f3ecdf;
+    --warn: #8a3a2a;
+    --code-bg: #f1efea;
+    --measure: 42rem;
+    --sidebar-w: 16.5rem;
+    --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Noto Sans SC", "Helvetica Neue", Arial, sans-serif;
+    --font-serif: "Newsreader", "Iowan Old Style", "Songti SC", "Noto Serif SC", Georgia, serif;
+    --font-mono: "SF Mono", "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+
+  * { box-sizing: border-box; }
+
+  html { scroll-behavior: smooth; }
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+  }
+
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--font-sans);
+    font-size: 16px;
+    line-height: 1.75;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ── layout ─────────────────────────────────────────────── */
+  .shell {
+    display: grid;
+    grid-template-columns: var(--sidebar-w) minmax(0, 1fr);
+    max-width: calc(var(--sidebar-w) + var(--measure) + 14rem);
+    margin: 0 auto;
+    align-items: start;
+  }
+
+  .toc {
+    position: sticky;
+    top: 0;
+    max-height: 100vh;
+    overflow-y: auto;
+    padding: 3rem 1.5rem 3rem 2rem;
+    border-right: 1px solid var(--rule);
+    font-size: 13.5px;
+    line-height: 1.5;
+  }
+
+  .toc-brand {
+    display: block;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    margin-bottom: 0.4rem;
+  }
+  .toc-title {
+    font-size: 15px;
+    font-weight: 600;
+    margin: 0 0 1.6rem;
+    color: var(--ink);
+    letter-spacing: -0.01em;
+  }
+  .toc-title a { color: inherit; text-decoration: none; }
+
+  .toc ol { list-style: none; margin: 0; padding: 0; }
+
+  .toc li { margin: 0; }
+  .toc li.toc-sub { padding-left: 0.95rem; }
+
+  .toc a {
+    display: block;
+    padding: 0.3rem 0 0.3rem 0.7rem;
+    color: var(--ink-soft);
+    text-decoration: none;
+    border-left: 2px solid transparent;
+    transition: color 0.12s, border-color 0.12s;
+  }
+  .toc a:hover { color: var(--ink); }
+  .toc li.toc-sub a { font-size: 12.5px; color: var(--ink-faint); }
+  .toc a.active {
+    color: var(--ink);
+    border-left-color: var(--accent);
+    font-weight: 500;
+  }
+  .toc li.toc-sub a.active { color: var(--accent); }
+
+  .doc-nav {
+    margin-top: 2.2rem;
+    padding-top: 1.2rem;
+    border-top: 1px solid var(--rule);
+    font-size: 12.5px;
+  }
+  .doc-nav-label {
+    display: block;
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    margin-bottom: 0.5rem;
+  }
+  .doc-nav a {
+    display: block;
+    padding: 0.25rem 0;
+    color: var(--ink-soft);
+    text-decoration: none;
+  }
+  .doc-nav a:hover { color: var(--accent); }
+  .doc-nav a[aria-current="page"] { color: var(--accent); font-weight: 500; }
+
+  main {
+    min-width: 0;
+    padding: 3rem 3.5rem 6rem max(2.5rem, calc((100% - var(--measure)) / 2));
+  }
+
+  /* ── document head ──────────────────────────────────────── */
+  .doc-meta {
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    letter-spacing: 0.04em;
+    color: var(--ink-faint);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem 1.1rem;
+    margin-bottom: 1.1rem;
+  }
+  .doc-meta span::before {
+    content: "";
+    display: inline-block;
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+    background: var(--rule-strong);
+    margin-right: 0.5rem;
+    vertical-align: 0.2em;
+  }
+
+  h1 {
+    font-family: var(--font-serif);
+    font-size: clamp(2.1rem, 4.4vw, 2.9rem);
+    font-weight: 500;
+    line-height: 1.15;
+    letter-spacing: -0.022em;
+    margin: 0 0 1.1rem;
+    text-wrap: balance;
+  }
+
+  .standfirst {
+    font-size: 1.16rem;
+    line-height: 1.65;
+    color: var(--ink-soft);
+    max-width: 38rem;
+    margin: 0 0 2rem;
+    text-wrap: pretty;
+  }
+  .standfirst strong { color: var(--ink); font-weight: 600; }
+
+  .head-rule {
+    border: 0;
+    border-top: 1px solid var(--rule-strong);
+    margin: 0 0 2.6rem;
+  }
+
+  /* ── prose ──────────────────────────────────────────────── */
+  section { scroll-margin-top: 2rem; }
+
+  h2 {
+    font-size: 1.42rem;
+    font-weight: 600;
+    letter-spacing: -0.012em;
+    line-height: 1.3;
+    margin: 3.4rem 0 1.1rem;
+    padding-top: 1.6rem;
+    border-top: 1px solid var(--rule);
+    text-wrap: balance;
+  }
+  h2:first-of-type { border-top: 0; padding-top: 0; margin-top: 0; }
+
+  h3 {
+    font-size: 1.04rem;
+    font-weight: 600;
+    line-height: 1.45;
+    margin: 2.1rem 0 0.7rem;
+    color: var(--ink);
+    text-wrap: balance;
+  }
+
+  p { margin: 0 0 1.05rem; text-wrap: pretty; }
+
+  ul, ol { margin: 0 0 1.15rem; padding-left: 1.35rem; }
+  li { margin-bottom: 0.4rem; text-wrap: pretty; }
+  li > ul, li > ol { margin-top: 0.4rem; margin-bottom: 0.2rem; }
+
+  a { color: var(--accent); text-underline-offset: 2px; }
+
+  strong { font-weight: 600; }
+
+  code {
+    font-family: var(--font-mono);
+    font-size: 0.855em;
+    background: var(--code-bg);
+    padding: 0.1em 0.34em;
+    border-radius: 3px;
+    color: #3f3a31;
+  }
+
+  pre {
+    background: var(--code-bg);
+    border-radius: 6px;
+    padding: 1rem 1.15rem;
+    overflow-x: auto;
+    margin: 0 0 1.2rem;
+    line-height: 1.55;
+    border: 1px solid var(--rule);
+  }
+  pre code {
+    background: none;
+    padding: 0;
+    font-size: 12.8px;
+    color: #33302a;
+  }
+
+  /* ── callouts ───────────────────────────────────────────── */
+  .note {
+    border-left: 2px solid var(--rule-strong);
+    padding: 0.15rem 0 0.15rem 1.1rem;
+    margin: 1.5rem 0;
+    color: var(--ink-soft);
+  }
+  .note p:last-child { margin-bottom: 0; }
+  .note-key {
+    display: block;
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    margin-bottom: 0.35rem;
+  }
+  .note.accent { border-left-color: var(--accent); background: var(--accent-soft); padding: 0.9rem 1.1rem; border-radius: 0 4px 4px 0; }
+  .note.accent .note-key { color: var(--accent); }
+  .note.warn { border-left-color: var(--warn); }
+  .note.warn .note-key { color: var(--warn); }
+
+  /* ── tables ─────────────────────────────────────────────── */
+  .table-wrap {
+    overflow-x: auto;
+    margin: 0 0 1.4rem;
+    border: 1px solid var(--rule);
+    border-radius: 6px;
+    background: var(--paper-raised);
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9rem;
+    line-height: 1.55;
+  }
+  th, td {
+    text-align: left;
+    padding: 0.72rem 0.95rem;
+    border-bottom: 1px solid var(--rule);
+    vertical-align: top;
+  }
+  th {
+    font-weight: 600;
+    font-size: 0.78rem;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    background: #f4f2ee;
+  }
+  tbody tr:last-child td { border-bottom: 0; }
+  td code { font-size: 0.82em; }
+
+  /* ── layer diagram ──────────────────────────────────────── */
+  .layers {
+    display: flex;
+    flex-direction: column;
+    gap: 0.55rem;
+    margin: 1.6rem 0 1.8rem;
+    font-size: 0.92rem;
+  }
+  .layer {
+    display: grid;
+    grid-template-columns: 7.5rem 1fr;
+    gap: 1rem;
+    align-items: baseline;
+    padding: 0.85rem 1rem;
+    background: var(--paper-raised);
+    border: 1px solid var(--rule);
+    border-radius: 5px;
+  }
+  .layer-name {
+    font-family: var(--font-mono);
+    font-size: 0.78rem;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+  .layer-body { color: var(--ink-soft); }
+  .layer-body b { color: var(--ink); font-weight: 600; }
+  .layer--priority { border-color: var(--accent); }
+
+  /* ── verdict block ──────────────────────────────────────── */
+  .verdict {
+    border: 1px solid var(--rule-strong);
+    border-radius: 6px;
+    padding: 1.15rem 1.3rem;
+    background: var(--paper-raised);
+    margin: 1.6rem 0 1.8rem;
+  }
+  .verdict p:last-child { margin-bottom: 0; }
+
+  /* ── checklist ──────────────────────────────────────────── */
+  ol.criteria { list-style: none; padding-left: 0; counter-reset: c; }
+  ol.criteria > li {
+    counter-increment: c;
+    position: relative;
+    padding-left: 2.1rem;
+    margin-bottom: 0.75rem;
+  }
+  ol.criteria > li::before {
+    content: counter(c, decimal-leading-zero);
+    position: absolute;
+    left: 0;
+    top: 0.06rem;
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    color: var(--ink-faint);
+    letter-spacing: 0.04em;
+  }
+
+  /* ── footer ─────────────────────────────────────────────── */
+  .doc-foot {
+    margin-top: 4rem;
+    padding-top: 1.2rem;
+    border-top: 1px solid var(--rule-strong);
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    color: var(--ink-faint);
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 0.5rem 1.5rem;
+  }
+  .doc-foot a { color: var(--ink-faint); }
+
+  /* ── responsive ─────────────────────────────────────────── */
+  @media (max-width: 900px) {
+    .shell { grid-template-columns: 1fr; }
+    .toc {
+      position: static;
+      max-height: none;
+      padding: 1.6rem 1.5rem;
+      border-right: 0;
+      border-bottom: 1px solid var(--rule);
+    }
+    .toc ol { columns: 2; column-gap: 1.5rem; }
+    .toc li { break-inside: avoid; }
+    main { padding: 2rem 1.4rem 4rem; }
+    .layer { grid-template-columns: 1fr; gap: 0.25rem; }
+  }
+
+  @media print {
+    body { background: #fff; font-size: 11.5pt; }
+    .toc { display: none; }
+    .shell { display: block; max-width: none; }
+    main { padding: 0; }
+    h2 { break-after: avoid; }
+    .table-wrap, .note, .layer, .verdict { break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <nav class="toc" aria-label="目录">
+    <span class="toc-brand">DSH 插件 · 设计文档</span>
+    <p class="toc-title"><a href="#top">技能开关</a></p>
+    <ol>
+      <li><a href="#idea">一句话</a></li>
+      <li><a href="#why">为什么需要它</a></li>
+      <li><a href="#who">用户与场景</a></li>
+      <li><a href="#behavior">产品行为</a></li>
+      <li class="toc-sub"><a href="#layers">三层开关</a></li>
+      <li class="toc-sub"><a href="#off-means">「关掉」到底关掉了什么</a></li>
+      <li class="toc-sub"><a href="#open-means">「打开」的两级</a></li>
+      <li class="toc-sub"><a href="#surfaces">界面位置</a></li>
+      <li class="toc-sub"><a href="#workspace-key">工作区怎么识别</a></li>
+      <li class="toc-sub"><a href="#when">生效时机</a></li>
+      <li><a href="#non-goals">非目标</a></li>
+      <li><a href="#tradeoffs">已知取舍</a></li>
+      <li><a href="#criteria">验收标准</a></li>
+    </ol>
+    <div class="doc-nav">
+      <span class="doc-nav-label">两份文档</span>
+      <a href="product-design.html" aria-current="page">产品设计</a>
+      <a href="technical-design.html">技术方案</a>
+    </div>
+  </nav>
+
+  <main id="top">
+    <div class="doc-meta">
+      <span>2026-10-18</span>
+      <span>设计已定，实现完成</span>
+      <span>dsh-skill-scope v0.1.0</span>
+    </div>
+
+    <h1>技能开关</h1>
+    <p class="standfirst">
+      让「哪些 skill 出现在这个会话里」变成三层开关：全局默认、工作区默认、会话临时。
+      关掉的 skill 不进入模型目录、不占上下文；再次打开就回来；<strong>全程不碰任何 <code>SKILL.md</code></strong>。
+    </p>
+    <hr class="head-rule">
+
+    <section id="idea">
+      <h2>一句话</h2>
+      <p>同一台机器上，写 PPT 的会话和写代码的会话不该互相看到对方的技能目录。这个插件把「这个 skill 现在要不要出现」做成一个可以随时拨的开关，并且按会话求值——所以同一个 skill 可以在一个工作区里开着、在另一个工作区里关着。</p>
+    </section>
+
+    <section id="why">
+      <h2>为什么需要它</h2>
+      <p>现状是：<code>~/.agents/skills</code> 下的每个 skill 都会出现在每个会话的 <code>&lt;available_skills&gt;</code> 里。本机 62 个 skill 的前言部分合计约 <strong>2.4 万字符</strong>，全部注入进每一次会话的第一条消息。</p>
+
+      <p>于是出现两种互相污染的场景：</p>
+      <ul>
+        <li>写 PPT 的会话里，<code>tdd</code>、<code>systematic-debugging</code>、<code>plugin-write</code> 这些编码技能挂在目录里，描述还挺长，模型每一步都在读它们。</li>
+        <li>写代码的会话里，<code>ppt-master</code>、<code>ppt-design-dna</code>、<code>icbc-report-deck</code> 这些也是一样。</li>
+      </ul>
+
+      <p>现有两条杠杆都不合适：</p>
+      <ol>
+        <li><strong>技能中心</strong>（<code>@linxin666/dsh-client-ui-skill-explorer</code>）改的是 <code>SKILL.md</code> 里的 <code>disable-model-invocation</code>，也就是一个永久、全局的状态。你在 PPT 会话里关掉 <code>tdd</code>，回到代码仓库它还是关的。</li>
+        <li><strong>agent preset</strong> 换的是整份组合，粒度是「换一套能力」，不是「今天这个不要」。</li>
+      </ol>
+
+      <div class="note accent">
+        <span class="note-key">缺的那一层</span>
+        <p>真正缺的是一层<strong>按会话求值的过滤</strong>，而且这一层不能改磁盘上的东西。</p>
+      </div>
+    </section>
+
+    <section id="who">
+      <h2>用户与场景</h2>
+      <p>单人使用，同一个用户在多个工作区之间来回切。典型一天：</p>
+      <ul>
+        <li>上午在某个带 <code>.git</code> 的代码仓库里写代码。</li>
+        <li>下午在 <code>Personal/写PPT</code> 目录做汇报材料。</li>
+        <li>中途在任意会话里临时想用一下某个 skill。</li>
+      </ul>
+    </section>
+
+    <section id="behavior">
+      <h2>产品行为</h2>
+
+      <h3 id="layers">三层开关</h3>
+      <div class="layers">
+        <div class="layer">
+          <span class="layer-name">全局默认</span>
+          <span class="layer-body"><b>设置页 →「技能开关」</b>。影响所有工作区、所有会话。用户手动改。</span>
+        </div>
+        <div class="layer">
+          <span class="layer-name">工作区默认</span>
+          <span class="layer-body"><b>会话顶部 workspace 名字旁</b>。影响该目录（含子目录）下所有会话，持久化。</span>
+        </div>
+        <div class="layer layer--priority">
+          <span class="layer-name">会话临时</span>
+          <span class="layer-body"><b>输入框左侧那个药丸</b>（Continue 旁边同一排）。影响当前会话，不持久化。</span>
+        </div>
+      </div>
+
+      <p><strong>解析规则：就近覆盖。</strong>会话 &gt; 工作区 &gt; 全局；某一层没提到的 skill，继承上一层；哪一层都没提到，默认<strong>显示</strong>。</p>
+
+      <p>也就是说装上插件本身不改变任何东西——所有 skill 照旧可见，直到你第一次拨开关。</p>
+
+      <div class="verdict">
+        <p><span class="note-key">关于「下层能不能关掉上层开的」：能。</span></p>
+        <p>这是讨论后选的方案。理由是「只能加不能减」在真实场景下会退化——全局默认如果包含 <code>office</code>，你在代码仓库里关不掉它，只能去全局删，而删了 PPT 那边也没了。为了让「只能加」成立，全局默认会被迫缩成所有工作区的交集，每个工作区再重新开一大半，反而更累。</p>
+        <p>覆盖制的代价是「我记得它开着，怎么不见了」。这个用两件事抵消：面板里每个 skill 都标出<strong>当前是哪一层做的决定</strong>（默认 / 全局 / 工作区 / 会话），一眼看见是谁关的；以及技术上不做锁（讨论后决定不要，保持简单）。</p>
+      </div>
+
+      <h3 id="off-means">「关掉」到底关掉了什么</h3>
+      <p>关掉 = <strong>对模型隐藏</strong>，不是加锁、不是改文件、不是禁用。</p>
+      <ul>
+        <li>从 <code>&lt;available_skills&gt;</code> 里消失，模型看不到它、也调不动它（内置 <code>skill</code> 工具会明确回「not available for model invocation」）。</li>
+        <li><strong>人仍然可以用</strong>：在输入框打 <code>/skill-name</code> 仍然能触发，<code>/</code> 菜单里仍然看得到（带「仅用户可调用」标记）。这是刻意的——开关是给上下文减负的，不是给用户设限的。</li>
+        <li>磁盘上什么都不变。</li>
+      </ul>
+
+      <h3 id="open-means">「打开」的两级</h3>
+      <ul>
+        <li><strong>拨开关打开</strong> → 回到目录。模型知道有这个东西，真要用时自己读。</li>
+        <li><strong>点「立即加载」</strong> → 把正文塞进下一步的上下文。省去「模型先知道、再读一次」的往返。</li>
+      </ul>
+
+      <div class="note">
+        <span class="note-key">立即加载的一个行为</span>
+        <p>它把正文排进会话下一步的收件箱，<code>agent.inject()</code> 按设计<strong>不会唤醒</strong>空闲的 agent。所以点了之后需要在会话里任意发一句话，正文才会随那一步进上下文。界面上会提示「已排入下一步」。</p>
+      </div>
+
+      <h3 id="surfaces">界面位置</h3>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th style="width:40%">位置</th><th>内容</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>输入框左侧（Continue 那几个开关同一排）</td><td>药丸：<code>技能 58/62</code>，点开是面板，默认停在<strong>本会话</strong>页</td></tr>
+            <tr><td>会话顶部 workspace 名字旁</td><td>工作区默认入口，点开面板停在<strong>本工作区</strong>页</td></tr>
+            <tr><td>设置页新增一页「技能开关」</td><td>全局默认，列出全部 skill</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p>面板三个 tab：本会话 / 本工作区 / 全局默认。顶部一句话说明当前层影响谁。每行：skill 名、来源徽章（谁决定的）、两行描述、右侧开关。搜索框按名称和描述过滤。底部「本层恢复默认」把这一层的覆盖清空，回到继承。</p>
+
+      <h3 id="workspace-key">工作区怎么识别</h3>
+      <p>按目录路径，取<strong>最近的含 <code>.git</code> 的祖先</strong>；没有 <code>.git</code> 就用自己的路径。这跟 DSH 自己找项目根的逻辑一致，所以 <code>Personal/某项目/src</code> 里开的会话和 <code>Personal/某项目</code> 里开的会话共享同一套工作区开关。</p>
+
+      <h3 id="when">生效时机</h3>
+      <p><strong>下一步就生效，不用重开会话。</strong>因为 skill 目录本来就是每步重算的；拨完开关，内置的目录消息会检测到条目变化并自动发布替换目录。</p>
+    </section>
+
+    <section id="non-goals">
+      <h2>非目标</h2>
+      <ul>
+        <li>不做 skill 的增删改查（那是技能中心的事）。</li>
+        <li>不做「按任务类型自动判断该开哪些」（没有可靠的判据，容易自作聪明）。</li>
+        <li>不改 <code>SKILL.md</code>，任何时候都不。</li>
+        <li>不做锁 / 强制层（讨论后明确不要）。</li>
+        <li>不做跨机器同步（状态就是一个本地 JSON 文件）。</li>
+      </ul>
+    </section>
+
+    <section id="tradeoffs">
+      <h2>已知取舍</h2>
+      <ul>
+        <li><strong>会话层不持久化。</strong>重开会话回到工作区默认。这是有意的：会话级调整是「今天这一次」的意思，留着反而会让下一天莫名其妙少几个 skill。</li>
+        <li><strong>状态是进程内缓存 + 文件。</strong>每步读一次文件（几 KB），换来「手工改文件也能立刻生效」。</li>
+        <li><strong>工作区键是绝对路径。</strong>目录改名或搬家，那套工作区开关就失配了（旧键留在文件里，不影响使用，只是成为孤儿）。</li>
+      </ul>
+    </section>
+
+    <section id="criteria">
+      <h2>验收标准</h2>
+      <ol class="criteria">
+        <li>全新安装、不做任何设置：模型看到的目录跟不装插件完全一致。</li>
+        <li>在某个会话里关掉 <code>office</code>：下一步该会话的 <code>&lt;available_skills&gt;</code> 里就没有 <code>office</code>；同一时刻另一个会话里 <code>office</code> 仍在。</li>
+        <li>把 <code>office</code> 设成全局关、在工作区 A 打开：工作区 A 的新会话看到 <code>office</code>，其他工作区看不到。</li>
+        <li>关掉的 skill 用 <code>/office</code> 仍能在 UI 菜单里选到并触发。</li>
+        <li>点「立即加载」，发一句话，正文出现在上下文里。</li>
+        <li>任何操作之后 <code>~/.agents/skills/**/SKILL.md</code> 的 mtime 都不变。</li>
+      </ol>
+    </section>
+
+    <div class="doc-foot">
+      <span>dsh-skill-scope · 产品设计</span>
+      <span><a href="technical-design.html">技术方案 →</a></span>
+    </div>
+  </main>
+</div>
+
+<script>
+  // Scroll-spy. Walks the document-order list of linkable headings (the page's
+  // main container, its sections, and their h3 subsections) and marks the last
+  // one whose top has passed the reading line.
+  //
+  // Painted synchronously in the scroll handler rather than inside rAF: the work
+  // is a dozen getBoundingClientRect reads, and rAF is throttled (or suspended)
+  // in background tabs and embedded webviews, which would leave the table of
+  // contents stuck on a stale entry.
+  (function () {
+    var links = Array.prototype.slice.call(document.querySelectorAll('.toc a[href^="#"]'));
+    if (links.length === 0) return;
+
+    var byId = new Map();
+    links.forEach(function (link) {
+      var id = link.getAttribute('href').slice(1);
+      if (document.getElementById(id)) byId.set(id, link);
+    });
+    if (byId.size === 0) return;
+
+    // querySelectorAll yields document order — exactly what the reading line scans.
+    var headings = Array.prototype.slice
+      .call(document.querySelectorAll('main[id], main section[id], main h3[id]'))
+      .filter(function (el) { return byId.has(el.id); });
+    if (headings.length === 0) return;
+
+    var READING_LINE = 120;
+    var lastY = -1;
+
+    function paint() {
+      var activeId = headings[0].id;
+      for (var i = 0; i < headings.length; i += 1) {
+        if (headings[i].getBoundingClientRect().top <= READING_LINE) activeId = headings[i].id;
+      }
+      // At the very bottom the last heading wins even if it never reaches the
+      // reading line (short trailing sections).
+      var doc = document.documentElement;
+      if (window.innerHeight + window.scrollY >= doc.scrollHeight - 4) {
+        activeId = headings[headings.length - 1].id;
+      }
+
+      links.forEach(function (link) {
+        var isCurrent = link.getAttribute('href') === '#' + activeId;
+        link.classList.toggle('active', isCurrent);
+        if (isCurrent) link.setAttribute('aria-current', 'true');
+        else link.removeAttribute('aria-current');
+      });
+    }
+
+    function onScroll() {
+      // Cheap guard: horizontal-only or sub-pixel churn repaints nothing.
+      var y = Math.round(window.scrollY);
+      if (y === lastY) return;
+      lastY = y;
+      paint();
+    }
+
+    window.addEventListener('scroll', onScroll, { passive: true });
+    window.addEventListener('resize', onScroll);
+    links.forEach(function (link) {
+      link.addEventListener('click', function () { paint(); });
+    });
+
+    paint();
+  })();
+</script>
+</body>
+</html>

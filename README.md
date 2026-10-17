@@ -8,7 +8,7 @@ Agent skills 在独立仓库：[**my_skills**](https://github.com/wangzhongqing/
 
 | 插件 | 说明 | 许可证 |
 |---|---|---|
-| [dsh-skill-scope](./dsh-skill-scope/) | 按会话 / 工作区 / 全局三层控制技能目录，不改任何 `SKILL.md` | MIT |
+| [dsh-skill-scope](./dsh-skill-scope/) | 按会话 / 工作区 / 全局三层控制技能目录，不改任何 `SKILL.md` · [产品设计](./dsh-skill-scope/docs/product-design.html) · [技术方案](./dsh-skill-scope/docs/technical-design.html) | MIT |
 | [dsh-terminal-locale-font](./dsh-terminal-locale-font/) | 修复 DSH 侧栏终端的方块/问号乱码与 `command not found` | MIT |
 
 ## 安装
@@ -21,7 +21,9 @@ cd dsh_plugins/<plugin-name>
 npm install
 ```
 
-然后按该插件 README 的「安装」章节操作——desktop profile 由 Electron 应用管理，CLI 拒绝写入，需要手动改 `package.json` 和 `cordis.patch.yml`。
+然后按该插件 README 的「安装」章节操作。
+
+注意 desktop profile 由 Electron 应用管理，`dsh plugin` 拒绝写入，只能手工改 `package.json` 和 `cordis.patch.yml`。带 `scripts/install-desktop.sh` 的插件提供了幂等脚本，直接跑它即可（会先做带时间戳的备份）。
 
 ## 目录约定
 
@@ -36,7 +38,7 @@ dsh_plugins/
     ├── lib/                       # 插件实现
     │   ├── index.js               # host 入口
     │   └── client.js              # client 入口（经典脚本格式）
-    ├── docs/                      # 产品设计与技术方案
+    ├── docs/                      # 产品设计与技术方案（.md 源 + .html 阅读版）
     ├── scripts/                   # 安装/运维脚本
     ├── test/                      # 测试
     ├── cordis.patch.yml           # bundle patch

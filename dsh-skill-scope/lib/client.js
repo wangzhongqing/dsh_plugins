@@ -112,10 +112,10 @@ window.__ModuleLoader__.load({
 
     // ── styles ──────────────────────────────────────────────────────────────
     var CSS = `
-.sks-corner{display:flex;align-items:center}
-.sks-cornerBtn{display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 9px;border-radius:999px;border:.5px solid transparent;background:transparent;color:var(--dsw-alias-label-tertiary);font:inherit;font-size:11.5px;line-height:18px;cursor:pointer;white-space:nowrap;transition:background .12s,color .12s}
-.sks-cornerBtn:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
-.sks-cornerBtn[data-open="true"]{background:var(--dsw-alias-bg-layer-3);color:var(--dsw-alias-label-primary)}
+.sks-dock{display:flex;align-items:center;gap:8px;box-sizing:border-box;width:calc(100% - var(--dsh-composer-side-clearance,0px) - var(--dsh-composer-side-clearance,0px) - var(--dsh-composer-dock-inset,0px) - var(--dsh-composer-dock-inset,0px));max-width:calc(var(--dsh-composer-card-max-width,100%) - var(--dsh-composer-dock-inset,0px) - var(--dsh-composer-dock-inset,0px));margin:0 auto;padding:0 2px;flex:none}
+.sks-dockBtn{display:inline-flex;align-items:center;gap:6px;height:26px;max-width:100%;padding:0 10px;border-radius:999px;border:.5px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-tertiary);font:inherit;font-size:11.5px;line-height:18px;cursor:pointer;white-space:nowrap;transition:background .12s,color .12s,border-color .12s}
+.sks-dockBtn:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary);border-color:var(--dsw-alias-border-l3)}
+.sks-dockBtn[data-open="true"]{background:var(--dsw-alias-bg-layer-3);border-color:var(--dsw-alias-border-l3);color:var(--dsw-alias-label-primary)}
 .sks-cornerLabel{font-weight:500}
 .sks-cornerCount{font-variant-numeric:tabular-nums;color:var(--dsw-alias-label-secondary)}
 .sks-cornerOff{font-variant-numeric:tabular-nums;color:var(--dsw-alias-label-tertiary)}
@@ -176,11 +176,17 @@ window.__ModuleLoader__.load({
     }
 
     // ── API client ──────────────────────────────────────────────────────────
+    // DOCUMENT-RELATIVE on purpose (no leading slash). The harness serves the
+    // GUI with `<base href="./">`, so a sub-path deployment (`/dsh/dsh/`) makes
+    // the entry directory the resolution base. A root-absolute `/api/...`
+    // escapes that prefix, never reaches this plugin's route, and turns into a
+    // silent 404 that reads like "the feature does nothing" — every shipped
+    // client posts its own routes the same relative way (`api/session.list`).
     var API = {
-      state: '/api/plugins/zhongqing-skill-scope/state',
-      set: '/api/plugins/zhongqing-skill-scope/set',
-      reset: '/api/plugins/zhongqing-skill-scope/reset',
-      load: '/api/plugins/zhongqing-skill-scope/load',
+      state: 'api/plugins/zhongqing-skill-scope/state',
+      set: 'api/plugins/zhongqing-skill-scope/set',
+      reset: 'api/plugins/zhongqing-skill-scope/reset',
+      load: 'api/plugins/zhongqing-skill-scope/load',
     };
 
     /**
@@ -549,18 +555,25 @@ window.__ModuleLoader__.load({
     }
 
     /**
-     * Compact status pill in the session header's far-right corner
-     * (`conversation.session.header.corner`).
+     * The session entrance: a full-width bar in `conversation.input.dock`,
+     * directly above the composer card.
      *
-     * Reads as a quiet counter — "技能 62/62" — and opens the switch panel on
-     * click. Kept in the header rather than above the composer because the
-     * composer dock only renders once a session has an input state; a brand-new
-     * session would leave the control invisible exactly when the user first
-     * wants it.
+     * Slot choice is a contract decision, not a taste one:
+     *   - `conversation.session.header.corner` is `kind: 'single'` and the
+     *     shipped occupant is `client-ui-sidebar-right`'s ExpandButton, with
+     *     `replaceRisk: 'shadows-shipped-ui'`. Registering there does not add a
+     *     second control: it takes the one cell and hides the sidebar toggle.
+     *   - `conversation.input.dock` is `kind: 'list'` with four shipped
+     *     occupants (queue, todo, goal, claude-code-mods). A fresh id is added
+     *     beside them, which is exactly what this plugin needs.
+     *
+     * The dock renders whenever the session has an input state, so the bar is
+     * present in a brand-new session too — the moment the user first wants to
+     * curate what the model can see.
      * @param {object} props - injected controller and locale.
      * @returns {object|null} React element.
      */
-    function HeaderCornerPill(props) {
+    function SkillDock(props) {
       var controller = props.controller;
       var state = useStore(controller.store);
       var t = props.t;
@@ -569,24 +582,22 @@ window.__ModuleLoader__.load({
       var off = counts === undefined ? 0 : counts.total - counts.enabled;
       var left;
       var top;
-      var placement = 'up';
       if (state.open && state.anchor !== undefined && typeof state.anchor.getBoundingClientRect === 'function') {
         var rect = state.anchor.getBoundingClientRect();
         var width = Math.min(420, window.innerWidth - 24);
         left = Math.max(12, Math.min(rect.left, window.innerWidth - width - 12));
-        // The dock sits above the composer, so the panel opens upward and
-        // clamps to the viewport rather than running off the top of the screen.
+        // Anchored to a dock row sitting directly above the composer, so the
+        // panel opens upward and clamps to the viewport.
         top = rect.top - 8;
-        placement = 'up';
       }
       return h(
         'div',
-        { className: 'sks-corner' },
+        { className: 'sks-dock' },
         h(
           'button',
           {
             type: 'button',
-            className: 'sks-cornerBtn',
+            className: 'sks-dockBtn',
             'data-open': state.open ? 'true' : 'false',
             title: counts === undefined
               ? t.title
@@ -609,7 +620,6 @@ window.__ModuleLoader__.load({
               'div',
               {
                 className: 'sks-panelWrap',
-                'data-placement': placement,
                 style: { left: left + 'px', top: top + 'px', transform: 'translateY(-100%)' },
               },
               h(SwitchPanel, { controller: controller, t: t }),
@@ -702,20 +712,23 @@ window.__ModuleLoader__.load({
 
       var disposers = [];
 
-      // Session header, far-right corner: the session entrance.
+      // Session entrance: a full-width row above the composer card.
+      // `conversation.input.dock` is a `list` slot, so this id lands beside the
+      // shipped queue/todo/goal rows instead of contesting a single cell.
       disposers.push(
-        ctx.slots.inject('conversation.session.header.corner', function () {
+        ctx.slots.inject('conversation.input.dock', function () {
           return ctx.slots.register(
             {
-              name: 'conversation.session.header.corner',
-              id: 'skill-scope-corner',
+              name: 'conversation.input.dock',
+              id: 'skill-scope',
+              order: 40,
               locale: NS,
               inject: function (sessionId) {
                 controller.bind(sessionId, undefined);
                 return { controller: controller, t: t };
               },
             },
-            HeaderCornerPill,
+            SkillDock,
           );
         }),
       );

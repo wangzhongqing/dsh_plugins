@@ -132,15 +132,24 @@ workspaceKey = findProjectRoot(cwd, existsSync, ['.git'])
 
 **必须是经典脚本**，不能有顶层 `import`/`export`——宿主的 combo 加载会因为一个 ESM token 整体失败。所以用 `window.__ModuleLoader__.load({id, factory})` 形态，React 从 `require('react')` 拿。
 
-### 三个挂载点
+### 两个挂载点
 
 | slot | 用途 | 关键点 |
 |---|---|---|
-| `conversation.input.left` | 药丸 + 面板 | `inject: (sessionId) => ...` 拿到会话 id；`kind: "list"`，`order: 20` |
-| `conversation.session.header.corner` | 会话入口 | `single`，标题栏最右角；不依赖 `inputState`，新会话也渲染 |
+| `conversation.input.dock` | 会话入口（输入框上方一条） | `kind: "list"`，自带 `id` 即新增一条；`inject: (sessionId) => ...` 拿会话 id |
 | `settings.section` | 全局默认页 | `kind: "list"`，提供 `label` 与 `locale` |
 
+**不要用 `conversation.session.header.corner`。** 它在宿主的槽位契约里是 `kind: "single"`，摘要写的是 "for one control"，登记的占用者是 `client-ui-sidebar-right` 的 `ExpandButton`，`replaceRisk` 为 `shadows-shipped-ui`。`single` 渲染取 `entriesOfSlot(...)[0]`——只有一个赢家，注册进去会顶掉侧栏展开按钮，而不是并排多一个入口。这也是"装了却看不到"最容易踩的坑：不是没注册成功，是注册到了只有一个格子的地方。
+
 全部走 `ctx.slots.inject(ownerKey, () => ctx.slots.register(...))`，宿主在 owner 折叠时自动撤销。
+
+### 路由路径必须相对，不能以 `/` 开头
+
+GUI 的 index 由 `dsh-host-frontend-static` 注入 `<base href="./">`。所以 `api/plugins/...` 会正确解析到前缀之下；而 `/api/plugins/...` 会逃出该前缀，在子路径部署（`/dsh/dsh/`）下变成静默 404——表现就是"点了没反应"。宿主端注册路由仍写绝对 `/api/...`，两端不矛盾：相对路径经 `<base>` 解析后就是那个绝对路径。
+
+### `dsh.client.inject` 只写宿主机上真实存在的包
+
+浏览器半区在 `package.json#dsh.client.inject` 里声明它会用到的客户端包。名字写错时宿主只是按 id 找依赖、找不到就跳过，不会报错，所以本地测试全绿也可能在真机上静默失效。`@deepseek-ai/dsh-client-ui-slots` 是 `ui-conversation` 的 devDependency，**不随 app 发布**；`slots` 这个**服务**由 `dsh-client-ui-renderer` 提供。所以这里写 renderer，不写 ui-slots。
 
 ### 状态
 

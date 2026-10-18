@@ -480,7 +480,7 @@
         </div>
         <div class="layer layer--priority">
           <span class="layer-name">会话临时</span>
-          <span class="layer-body"><b>会话标题栏右上角的「技能 62/62」</b>。影响当前会话，不持久化。</span>
+          <span class="layer-body"><b>输入框上方那条「技能 62/62」</b>。影响当前会话，不持久化。</span>
         </div>
       </div>
 
@@ -526,11 +526,18 @@
             <tr><th style="width:40%">位置</th><th>内容</th></tr>
           </thead>
           <tbody>
-            <tr><td>会话标题栏右上角</td><td>「技能 62/62」，点开是面板，默认停在<strong>本会话</strong>页</td></tr>
+            <tr><td>输入框上方一条</td><td>「技能 62/62」，点开是面板，默认停在<strong>本会话</strong>页</td></tr>
             <tr><td>设置页新增一页「技能开关」</td><td>全局默认，列出全部 skill（含锁定的插件自带项）</td></tr>
           </tbody>
         </table>
       </div>
+
+      <p>入口为什么在输入框上方，而不是标题栏右上角：</p>
+      <ul>
+        <li><code>conversation.session.header.corner</code> 是 <code>kind: 'single'</code>——<strong>一个格子只有一个占用者</strong>。宿主自己的 <code>client-ui-sidebar-right</code> 已经在那儿放了侧栏展开按钮，其登记表把 <code>replaceRisk</code> 写作 <code>shadows-shipped-ui</code>。注册进去不是"加一个控件"，而是抢走那一格、把侧栏按钮顶掉。</li>
+        <li><code>conversation.input.dock</code> 是 <code>kind: 'list'</code>，宿主的 queue / todo / goal / claude-code-mods 四条都在里面。给一个自己的 <code>id</code> 就是新增一条，不动别人的。</li>
+      </ul>
+      <p>早期版本曾把入口放在标题栏角落，并写下"dock 在新会话不渲染"——那是误判。只有会话与输入状态都缺失时 <code>zone</code> 才为空，而两者都由会话自身提供，新建会话一开始就有。</p>
 
       <p>面板两个 tab：本会话 / 全局默认。顶部一句话说明当前层影响谁。每行：skill 名、来源徽章（谁决定的）、两行描述、右侧开关。搜索框按名称和描述过滤。底部「本层恢复默认」把这一层的覆盖清空，回到继承。</p>
 

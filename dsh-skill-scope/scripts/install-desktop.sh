@@ -68,4 +68,4 @@ echo "Verify the package resolves from the profile:"
 ( cd "$PROFILE" && node -e "import('@zhongqing/dsh-skill-scope').then(m => console.log('ok:', m.name, JSON.stringify(m.inject)))" ) \
   || { echo "FAILED: the package does not resolve from the profile" >&2; exit 1; }
 echo
-echo "Next: restart DeepSeek Harness, then look for the \"技能 x/y\" pill in the session header corner."
+echo "Next: restart DeepSeek Harness, then look for the \"技能 x/y\" row just above the composer."

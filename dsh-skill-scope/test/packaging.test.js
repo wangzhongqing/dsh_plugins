@@ -87,12 +87,55 @@ test('the bundle patch and the naming manifest agree on the loader row', () => {
 
 test('the browser half mounts the two supported surfaces only', () => {
   const source = read('lib/client.js');
-  assert.match(source, /conversation\.session\.header\.corner/, 'session entrance lives in the header corner');
+  // The session entrance lives in the composer dock: `kind: 'list'`, so a fresh
+  // id is added beside the shipped rows.
+  assert.match(source, /conversation\.input\.dock/, 'session entrance lives in the composer dock');
   assert.match(source, /settings\.section/, 'global defaults live in settings');
-  // The workspace layer was dropped: its row menu is hard-coded in the host and
-  // exposes no slot, so no surface may claim to offer it.
+  // `conversation.session.header.corner` is `kind: 'single'` and its shipped
+  // occupant is client-ui-sidebar-right's ExpandButton (`replaceRisk:
+  // shadows-shipped-ui`). Registering there takes the one cell away from the
+  // sidebar toggle instead of adding a control, so this plugin must not.
+  assert.doesNotMatch(
+    source,
+    /name: 'conversation\.session\.header\.corner'/,
+    'the header corner is a single-occupancy cell owned by the shipped sidebar toggle',
+  );
+  // No workspace layer: its row menu is hard-coded in the host with no slot.
   assert.doesNotMatch(source, /conversation\.session\.header\.utilities/);
   assert.doesNotMatch(source, /conversation\.input\.left/);
+});
+
+test('every client route is document-relative', () => {
+  const source = read('lib/client.js');
+  // The GUI is served with `<base href="./">`, so a sub-path deployment
+  // (`/dsh/dsh/`) makes the entry directory the resolution base. A
+  // root-absolute `/api/...` escapes that prefix and silently 404s — the
+  // feature then looks like it "does nothing".
+  const absolute = [...source.matchAll(/'(\/api\/[^']*)'/g)].map((match) => match[1]);
+  assert.deepEqual(absolute, [], `root-absolute route(s) escape the base href: ${absolute.join(', ')}`);
+  assert.match(source, /state: 'api\/plugins\/zhongqing-skill-scope\/state'/);
+});
+
+test('every package named in dsh.client.inject resolves in a real host', () => {
+  const pkg = JSON.parse(read('package.json'));
+  const declared = pkg.dsh.client.inject;
+  assert.ok(Array.isArray(declared) && declared.length > 0, 'inject must list the client packages it consumes');
+  for (const name of declared) {
+    assert.match(name, /^@deepseek-ai\/dsh-[a-z0-9-]+$/, `not a host client package: ${name}`);
+  }
+  // `dsh-client-ui-slots` is a devDependency of ui-conversation and is NOT
+  // present in the shipped app; the `slots` SERVICE comes from
+  // dsh-client-ui-renderer. Naming the package here asked the boot to preload
+  // something that does not exist.
+  assert.ok(
+    !declared.includes('@deepseek-ai/dsh-client-ui-slots'),
+    'dsh-client-ui-slots is not shipped in the app; the slots service comes from dsh-client-ui-renderer',
+  );
+  // The renderer is the package that actually provides the `slots` service.
+  assert.ok(
+    declared.includes('@deepseek-ai/dsh-client-ui-renderer'),
+    'the slots service is provided by dsh-client-ui-renderer',
+  );
 });
 
 test('every declared route appears in the host half', () => {

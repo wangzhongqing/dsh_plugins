@@ -71,24 +71,32 @@ ctx.on('agent/disposed',  ({agent}) => dropShadows(agent))
 ctx.on('agent/pre-step',  async ({agent, signal}, next) => { await reconcile(agent, signal); return next() })
 ```
 
-- `agent/created` 拿到的 `agent` 就是「按 agent 隔离的入口」，用它注册的一切随该 agent 处置而撤销。
+- `agent/created` 拿到的 `agent` 就是「按 agent 隔离的入口」，用它注册的一切随该 agent 处置而撤销。这个监听器**返回 promise 并被 await**：`agent/created` 走 `ctx.serial` 派发，await 会把创建公告压到影子注册完成之后，从而消掉「首个请求看到未过滤目录」的竞态，而不必赌 `agent/pre-step` 在瀑布链里的顺序。
 - `agent/pre-step` 是兜底：工作区切换、手工改文件、漏掉任何信号，都在下一步前修正。**且同步发生在 `await next()` 之前**——这样无论内置目录监听器排在链的哪一侧，看到的都是修正后的集合。
 - 官方指引明确要求：`agent.ctx` 上的注册要自己持有 disposer 并在插件卸载时清理，`agent.ctx` 不会因为插件卸载自动撤销。所以每个 agent 的 disposer 存在 `appliedStubs` 里，`agent/disposed` 和插件 effect 都清。
 
 ### reconcile
 
 ```
-desired = 该 agent 当前应隐藏的名字集合（按三层解析）
+desired = 该 agent 当前应隐藏的名字集合（按两层解析：会话 > 全局）
 for 已注册但不再需要 → dispose()           // 打开
 for 需要但未注册 → ctx.skills.get(name, {scope: agent})
                   → agent.ctx.skills.register({...真实内容, invocation:{modelInvocable:false,userInvocable:true}})
 ```
 
-`ctx.skills.get()` 用的是**全局**注册表并带 `scope: agent`，拿到的是「这个 agent 本该看到的那一份」——所以工作区层的 skill 也能正确取到正文。
+`ctx.skills.get()` 用的是**全局**注册表并带 `scope: agent`，拿到的是「这个 agent 本该看到的那一份」。
+
+**scope 是必须的，不是可选的。** 预设会各自挂载 `skill-filesystem`，所以用户技能落在**那个预设的层**里；不带 scope 的读取只能看到宿主平面（全局层）的运行时技能。这正是「设置页只显示 15 个」的原因——那 15 个是 `univer-office` 的运行时注册，62 个文件系统技能当时根本不在读取结果里。
 
 失败处理：`get` 抛错（provider 挂了）或 `register` 抛错都只记 warn 并跳过，绝不让一个坏 skill 打断整步。
 
-### 工作区键
+### 没有 session 时借用 live agent 的 scope
+
+设置页没有会话，但用户要看的是真实目录。做法是按优先级借一个 live agent 的 scope：先找 cwd 匹配的，再退到任意一个；一个都没有时保持宿主平面视图。
+
+这不是权宜之计——catalog 本来就是 per-scope 的，没有 scope 就没有「用户会看到什么」这件事可谈。
+
+### 工作区键（数据层仍然生效）
 
 ```js
 cwd = await ctx.workingDirectory.ensure(agent, signal)   // 拿不到就退化到 session.header.cwd
@@ -96,6 +104,8 @@ workspaceKey = findProjectRoot(cwd, existsSync, ['.git'])
 ```
 
 `findProjectRoot` 是纯函数（在 `lib/shared.js`），注入 `exists` 便于测试。
+
+界面没有工作区档，但这一层**在解析里是活的**：`disabledNames()` 三层都扫，`resolveSkill()` 也按 会话 > 工作区 > 全局 取值。所以手写状态文件里的 `workspaces` 覆盖会真的生效，`test/host.test.js` 有对应用例（子目录继承、其他目录不受影响）。不删这一层是因为它是数据面能力，缺的只是一个挂得住的 UI 位置。
 
 ### 路由
 
@@ -127,7 +137,7 @@ workspaceKey = findProjectRoot(cwd, existsSync, ['.git'])
 | slot | 用途 | 关键点 |
 |---|---|---|
 | `conversation.input.left` | 药丸 + 面板 | `inject: (sessionId) => ...` 拿到会话 id；`kind: "list"`，`order: 20` |
-| `conversation.session.header.utilities` | 工作区入口 | 与现有插件（better-sidebar）占同一个 list，`order: 30` |
+| `conversation.session.header.corner` | 会话入口 | `single`，标题栏最右角；不依赖 `inputState`，新会话也渲染 |
 | `settings.section` | 全局默认页 | `kind: "list"`，提供 `label` 与 `locale` |
 
 全部走 `ctx.slots.inject(ownerKey, () => ctx.slots.register(...))`，宿主在 owner 折叠时自动撤销。
@@ -157,7 +167,7 @@ workspaceKey = findProjectRoot(cwd, existsSync, ['.git'])
 - 关掉一个 skill → 该 agent 的 `isModelInvocable` 集合里确实没它，另一个 agent 照旧看得见；
 - 正文仍可取到且 `modelInvocable: false`（正是内置 `skill` 工具拒绝的那一条）；
 - 打开 → provider 条目在下次读取时回来；
-- 工作区层开关对子目录里开的会话生效；
+- 插件自带技能被列为不可开关（`switchable: false`），写接口返回 409；
 - 面板能说出每一行是哪一层决定的；
 - reset 回到继承。
 
@@ -169,7 +179,7 @@ workspaceKey = findProjectRoot(cwd, existsSync, ['.git'])
 
 诚实列出来，装上去之后要补：
 
-- **`agent/pre-step` 在真宿主里的先后。** 集成测试直接调了监听器，没有跑真正的瀑布链，所以「影子一定先于内置目录监听器生效」还没在真宿主里证明。代码在 `await next()` **之前**完成注册，理论上任何位置的后续监听器都能看到新集合；如果实测发现晚了一步，退路是在 `agent/created` 时就注册全量影子，再靠 `modelInvocable` 只对需要的置 false。
+- **`agent/pre-step` 在真宿主里的先后。** 兜底逻辑仍在 `await next()` 之前完成注册，但真正的保证已经前移：`agent/created` 现在 await 影子注册，创建公告走 `ctx.serial`，所以首个请求之前影子已经在位。`pre-step` 退化成「工作区切换 / 外部改文件」的校正路径，不再承担首次过滤。
 - **浏览器两个 slot 的视觉位置**是否会挤到原有控件，需要在真实页面里看（本轮没有可用的浏览器控制，只有静态形态验证）。
 - **`workingDirectory` 缺失时的降级路径**已写（回退 `session.header.cwd`）并测过 fake 路径，但没在真组合里跑。
 

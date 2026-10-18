@@ -382,7 +382,7 @@
       <li><a href="#host">宿主半区</a></li>
       <li class="toc-sub"><a href="#wiring">事件接线</a></li>
       <li class="toc-sub"><a href="#reconcile">reconcile</a></li>
-      <li class="toc-sub"><a href="#workspace">工作区键</a></li>
+      <li class="toc-sub"><a href="#scope-fallback">没有 session 时的 scope</a></li>
       <li class="toc-sub"><a href="#routes">路由</a></li>
       <li class="toc-sub"><a href="#writes">写入串行化</a></li>
       <li><a href="#client">浏览器半区</a></li>
@@ -541,13 +541,13 @@ ctx.on('agent/pre-step', async ({agent, signal}, next) =&gt; {
 })</code></pre>
 
       <ul>
-        <li><code>agent/created</code> 拿到的 <code>agent</code> 就是「按 agent 隔离的入口」，用它注册的一切随该 agent 处置而撤销。</li>
+        <li><code>agent/created</code> 拿到的 <code>agent</code> 就是「按 agent 隔离的入口」，用它注册的一切随该 agent 处置而撤销。这个监听器<strong>返回 promise 并被 await</strong>：<code>agent/created</code> 走 <code>ctx.serial</code> 派发，await 会把创建公告压到影子注册完成之后，从而消掉「首个请求看到未过滤目录」的竞态。</li>
         <li><code>agent/pre-step</code> 是兜底：工作区切换、手工改文件、漏掉任何信号，都在下一步前修正。<strong>且同步发生在 <code>await next()</code> 之前</strong>——这样无论内置目录监听器排在链的哪一侧，看到的都是修正后的集合。</li>
         <li>官方指引明确要求：<code>agent.ctx</code> 上的注册要自己持有 disposer 并在插件卸载时清理，<code>agent.ctx</code> 不会因为插件卸载自动撤销。所以每个 agent 的 disposer 存在 <code>appliedStubs</code> 里，<code>agent/disposed</code> 和插件 effect 都清。</li>
       </ul>
 
       <h3 id="reconcile">reconcile</h3>
-      <pre><code>desired = 该 agent 当前应隐藏的名字集合（按三层解析）
+      <pre><code>desired = 该 agent 当前应隐藏的名字集合（按两层解析：会话 &gt; 全局）
 
 for 已注册但不再需要 → dispose()            // 打开
 for 需要但未注册 → ctx.skills.get(name, {scope: agent})
@@ -556,14 +556,24 @@ for 需要但未注册 → ctx.skills.get(name, {scope: agent})
                      invocation: {modelInvocable: false, userInvocable: true}
                    })</code></pre>
 
-      <p><code>ctx.skills.get()</code> 用的是<strong>全局</strong>注册表并带 <code>scope: agent</code>，拿到的是「这个 agent 本该看到的那一份」——所以工作区层的 skill 也能正确取到正文。</p>
+      <p><code>ctx.skills.get()</code> 用的是<strong>全局</strong>注册表并带 <code>scope: agent</code>，拿到的是「这个 agent 本该看到的那一份」。</p>
+
+      <div class="note warn">
+        <span class="note-key">scope 是必须的，不是可选的</span>
+        <p>预设会各自挂载 <code>skill-filesystem</code>，所以用户技能落在<strong>那个预设的层</strong>里；不带 scope 的读取只能看到宿主平面（全局层）的运行时技能。这正是「设置页只显示 15 个」的原因——那 15 个是 <code>univer-office</code> 的运行时注册，62 个文件系统技能当时根本不在读取结果里。</p>
+      </div>
 
       <p>失败处理：<code>get</code> 抛错（provider 挂了）或 <code>register</code> 抛错都只记 warn 并跳过，绝不让一个坏 skill 打断整步。</p>
 
-      <h3 id="workspace">工作区键</h3>
+      <h3 id="scope-fallback">没有 session 时的 scope</h3>
+      <p>设置页没有会话，但用户要看的是真实目录。做法是按优先级借一个 live agent 的 scope：先找 cwd 匹配的，再退到任意一个；一个都没有时保持宿主平面视图。</p>
+      <p>这不是权宜之计——catalog 本来就是 per-scope 的，没有 scope 就没有「用户会看到什么」这件事可谈。</p>
+
+      <h3 id="workspace-key">工作区键（数据层仍然生效）</h3>
       <pre><code>cwd = await ctx.workingDirectory.ensure(agent, signal)   // 拿不到就退化到 session.header.cwd
 workspaceKey = findProjectRoot(cwd, existsSync, ['.git'])</code></pre>
       <p><code>findProjectRoot</code> 是纯函数（在 <code>lib/shared.js</code>），注入 <code>exists</code> 便于测试。</p>
+      <p>界面没有工作区档，但这一层<strong>在解析里是活的</strong>：<code>disabledNames()</code> 三层都扫，<code>resolveSkill()</code> 也按 会话 &gt; 工作区 &gt; 全局 取值。所以手写状态文件里的 <code>workspaces</code> 覆盖会真的生效，<code>test/host.test.js</code> 有对应用例（子目录继承、其他目录不受影响）。不删这一层是因为它是数据面能力，缺的只是一个挂得住的 UI 位置。</p>
 
       <h3 id="routes">路由</h3>
       <p>四条 exact 路由，全部挂在 <code>/api/plugins/zhongqing-skill-scope/</code>：</p>
@@ -606,9 +616,9 @@ workspaceKey = findProjectRoot(cwd, existsSync, ['.git'])</code></pre>
           <thead><tr><th style="width:36%">slot</th><th style="width:26%">用途</th><th>关键点</th></tr></thead>
           <tbody>
             <tr>
-              <td><code>conversation.input.left</code></td>
-              <td>药丸 + 面板</td>
-              <td><code>inject: (sessionId) =&gt; ...</code> 拿到会话 id；<code>kind: "list"</code>，<code>order: 20</code></td>
+              <td><code>conversation.session.header.corner</code></td>
+              <td>角标 + 面板</td>
+              <td><code>inject: (sessionId) =&gt; ...</code> 拿到会话 id；<code>single</code></td>
             </tr>
             <tr>
               <td><code>conversation.session.header.utilities</code></td>
@@ -654,7 +664,7 @@ workspaceKey = findProjectRoot(cwd, existsSync, ['.git'])</code></pre>
         <li class="yes"><span class="status-mark">✓</span><span>关掉一个 skill → 该 agent 的 <code>isModelInvocable</code> 集合里确实没它，另一个 agent 照旧看得见</span></li>
         <li class="yes"><span class="status-mark">✓</span><span>正文仍可取到且 <code>modelInvocable: false</code>（正是内置 <code>skill</code> 工具拒绝的那一条）</span></li>
         <li class="yes"><span class="status-mark">✓</span><span>打开 → provider 条目在下次读取时回来</span></li>
-        <li class="yes"><span class="status-mark">✓</span><span>工作区层开关对子目录里开的会话生效</span></li>
+        <li class="yes"><span class="status-mark">✓</span><span>插件自带技能列为不可开关（<code>switchable: false</code>），写接口返回 409</span></li>
         <li class="yes"><span class="status-mark">✓</span><span>面板能说出每一行是哪一层决定的</span></li>
         <li class="yes"><span class="status-mark">✓</span><span>reset 回到继承</span></li>
       </ul>
@@ -672,7 +682,7 @@ workspaceKey = findProjectRoot(cwd, existsSync, ['.git'])</code></pre>
       <p>诚实列出来，装上去之后要补：</p>
 
       <ul class="status-list">
-        <li class="no"><span class="status-mark">—</span><span><strong><code>agent/pre-step</code> 在真宿主里的先后。</strong>集成测试直接调了监听器，没有跑真正的瀑布链，所以「影子一定先于内置目录监听器生效」还没在真宿主里证明。代码在 <code>await next()</code> <strong>之前</strong>完成注册，理论上任何位置的后续监听器都能看到新集合；如果实测发现晚了一步，退路是在 <code>agent/created</code> 时就注册全量影子，再靠 <code>modelInvocable</code> 只对需要的置 false。</span></li>
+        <li class="no"><span class="status-mark">—</span><span><strong><code>agent/pre-step</code> 在真宿主里的先后。</strong>兜底逻辑仍在 <code>await next()</code> 之前完成注册，但真正的保证已经前移：<code>agent/created</code> 现在 await 影子注册，创建公告走 <code>ctx.serial</code>，所以首个请求之前影子已经在位。<code>pre-step</code> 退化成「工作区切换 / 外部改文件」的校正路径，不再承担首次过滤。</span></li>
         <li class="no"><span class="status-mark">—</span><span><strong>浏览器两个 slot 的视觉位置</strong>是否会挤到原有控件，需要在真实页面里看（本轮没有可用的浏览器控制，只有静态形态验证）。</span></li>
         <li class="no"><span class="status-mark">—</span><span><strong><code>workingDirectory</code> 缺失时的降级路径</strong>已写（回退 <code>session.header.cwd</code>）并测过 fake 路径，但没在真组合里跑。</span></li>
       </ul>

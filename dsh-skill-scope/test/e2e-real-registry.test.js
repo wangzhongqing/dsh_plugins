@@ -40,6 +40,8 @@ async function boot(names) {
   host.skills.registerProvider(() => ({
     name: 'filesystem',
     async list() {
+      // A real filesystem provider reports the instruction file, which is how
+      // the panel tells a user-installed skill from a plugin-owned runtime one.
       return names.map((name) => ({
         name,
         description: `${name} description`,
@@ -47,6 +49,7 @@ async function boot(names) {
         invocation: { modelInvocable: true, userInvocable: true },
         rank: 500,
         provider: 'filesystem',
+        path: `/tmp/skills/${name}/SKILL.md`,
       }));
     },
     async get(candidate) {
@@ -56,6 +59,7 @@ async function boot(names) {
         content: `real body of ${candidate.name}`,
         provider: 'filesystem',
         source: 'user-agents',
+        path: `/tmp/skills/${candidate.name}/SKILL.md`,
         invocation: { modelInvocable: true, userInvocable: true },
       };
     },
@@ -177,6 +181,18 @@ async function callRoute(route, payload) {
  * @param {(dir: string) => Promise<void>} body - test body.
  * @returns {Promise<void>} completion.
  */
+/**
+ * Apply the plugin and wait for its deferred service injections to settle, so
+ * the route table is populated before the test drives it.
+ * @param {object} ctx - host context.
+ * @param {object} config - plugin config.
+ * @returns {Promise<void>} completion.
+ */
+async function applyPlugin(ctx, config) {
+  apply(ctx, config);
+  await new Promise((resolve) => setTimeout(resolve, 30));
+}
+
 async function withProject(body) {
   const dir = mkdtempSync(join(tmpdir(), 'skill-scope-e2e-'));
   try {
@@ -190,7 +206,7 @@ async function withProject(body) {
 test('apply() hides a session-disabled skill through the real registry', async () => {
   await withProject(async (dir) => {
     const harness = await boot(['office', 'ppt-master']);
-    apply(harness.ctx, { storePath: join(dir, 'state.json') });
+    await applyPlugin(harness.ctx, { storePath: join(dir, 'state.json') });
 
     const agent = makeAgent(harness.ctx, join(dir, 'sub'));
     harness.agents.push(agent);
@@ -236,7 +252,7 @@ test('a workspace-layer switch reaches a session opened in a subdirectory', asyn
   await withProject(async (dir) => {
     mkdirSync(join(dir, 'repo', '.git'), { recursive: true });
     const harness = await boot(['office', 'ppt-master']);
-    apply(harness.ctx, { storePath: join(dir, 'state.json') });
+    await applyPlugin(harness.ctx, { storePath: join(dir, 'state.json') });
 
     const repoRoot = join(dir, 'repo');
     const agent = makeAgent(harness.ctx, join(repoRoot, 'src', 'deep'));
@@ -262,7 +278,7 @@ test('a workspace-layer switch reaches a session opened in a subdirectory', asyn
 test('the panel payload explains which layer decided each row', async () => {
   await withProject(async (dir) => {
     const harness = await boot(['office', 'ppt-master']);
-    apply(harness.ctx, { storePath: join(dir, 'state.json') });
+    await applyPlugin(harness.ctx, { storePath: join(dir, 'state.json') });
 
     const reply = await callRoute(harness.routes.get('set'), {
       layer: 'global',
@@ -284,7 +300,7 @@ test('the panel payload explains which layer decided each row', async () => {
 test('reset returns a layer to inheritance', async () => {
   await withProject(async (dir) => {
     const harness = await boot(['office']);
-    apply(harness.ctx, { storePath: join(dir, 'state.json') });
+    await applyPlugin(harness.ctx, { storePath: join(dir, 'state.json') });
 
     await callRoute(harness.routes.get('set'), { layer: 'global', name: 'office', enabled: false, cwd: dir });
     const reset = await callRoute(harness.routes.get('reset'), { layer: 'global', cwd: dir });

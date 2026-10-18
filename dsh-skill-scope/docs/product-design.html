@@ -400,11 +400,12 @@
       <li><a href="#why">为什么需要它</a></li>
       <li><a href="#who">用户与场景</a></li>
       <li><a href="#behavior">产品行为</a></li>
-      <li class="toc-sub"><a href="#layers">三层开关</a></li>
+      <li class="toc-sub"><a href="#layers">两层开关</a></li>
+      <li class="toc-sub"><a href="#switchable">哪些 skill 能开关</a></li>
       <li class="toc-sub"><a href="#off-means">「关掉」到底关掉了什么</a></li>
       <li class="toc-sub"><a href="#open-means">「打开」的两级</a></li>
       <li class="toc-sub"><a href="#surfaces">界面位置</a></li>
-      <li class="toc-sub"><a href="#workspace-key">工作区怎么识别</a></li>
+      <li class="toc-sub"><a href="#workspace-layer">数据层的工作区层</a></li>
       <li class="toc-sub"><a href="#when">生效时机</a></li>
       <li><a href="#non-goals">非目标</a></li>
       <li><a href="#tradeoffs">已知取舍</a></li>
@@ -426,7 +427,7 @@
 
     <h1>技能开关</h1>
     <p class="standfirst">
-      让「哪些 skill 出现在这个会话里」变成三层开关：全局默认、工作区默认、会话临时。
+      让「哪些 skill 出现在这个会话里」变成两层开关：全局默认、会话临时。
       关掉的 skill 不进入模型目录、不占上下文；再次打开就回来；<strong>全程不碰任何 <code>SKILL.md</code></strong>。
     </p>
     <hr class="head-rule">
@@ -471,31 +472,33 @@
     <section id="behavior">
       <h2>产品行为</h2>
 
-      <h3 id="layers">三层开关</h3>
+      <h3 id="layers">两层开关</h3>
       <div class="layers">
         <div class="layer">
           <span class="layer-name">全局默认</span>
-          <span class="layer-body"><b>设置页 →「技能开关」</b>。影响所有工作区、所有会话。用户手动改。</span>
-        </div>
-        <div class="layer">
-          <span class="layer-name">工作区默认</span>
-          <span class="layer-body"><b>会话顶部 workspace 名字旁</b>。影响该目录（含子目录）下所有会话，持久化。</span>
+          <span class="layer-body"><b>设置页 →「技能开关」</b>。影响所有会话，持久化。</span>
         </div>
         <div class="layer layer--priority">
           <span class="layer-name">会话临时</span>
-          <span class="layer-body"><b>输入框左侧那个药丸</b>（Continue 旁边同一排）。影响当前会话，不持久化。</span>
+          <span class="layer-body"><b>会话标题栏右上角的「技能 62/62」</b>。影响当前会话，不持久化。</span>
         </div>
       </div>
 
-      <p><strong>解析规则：就近覆盖。</strong>会话 &gt; 工作区 &gt; 全局；某一层没提到的 skill，继承上一层；哪一层都没提到，默认<strong>显示</strong>。</p>
+      <p><strong>解析规则：就近覆盖。</strong>会话 &gt; 全局；会话层没提到的 skill 继承全局；都没提到，默认<strong>显示</strong>。也就是说装上插件本身不改变任何东西，直到你第一次拨开关。</p>
 
-      <p>也就是说装上插件本身不改变任何东西——所有 skill 照旧可见，直到你第一次拨开关。</p>
-
-      <div class="verdict">
-        <p><span class="note-key">关于「下层能不能关掉上层开的」：能。</span></p>
-        <p>这是讨论后选的方案。理由是「只能加不能减」在真实场景下会退化——全局默认如果包含 <code>office</code>，你在代码仓库里关不掉它，只能去全局删，而删了 PPT 那边也没了。为了让「只能加」成立，全局默认会被迫缩成所有工作区的交集，每个工作区再重新开一大半，反而更累。</p>
-        <p>覆盖制的代价是「我记得它开着，怎么不见了」。这个用两件事抵消：面板里每个 skill 都标出<strong>当前是哪一层做的决定</strong>（默认 / 全局 / 工作区 / 会话），一眼看见是谁关的；以及技术上不做锁（讨论后决定不要，保持简单）。</p>
+      <h3 id="switchable">哪些 skill 能开关</h3>
+      <p>面板列出全部技能，但只有<strong>你自己装的</strong>能开关：</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th style="width:22%">类别</th><th style="width:38%">判定</th><th>能否开关</th></tr></thead>
+          <tbody>
+            <tr><td>用户安装</td><td>有指令文件（<code>SKILL.md</code> 路径）</td><td>能</td></tr>
+            <tr><td>插件自带</td><td>运行时注册、无指令文件（如 <code>univer-office</code> 的 <code>office</code> / <code>univer-*</code>）</td><td>只列出，显示「插件自带」徽章，锁定</td></tr>
+          </tbody>
+        </table>
       </div>
+      <p>插件自带的技能是插件自己的路由入口，关掉会让该插件行为异常。写接口对它们返回 409，防止旧客户端绕过。</p>
+      <p>列表完全来自运行时注册表，没有硬编码名单：增删技能、换机器、给别人装，都按各自实际技能来。</p>
 
       <h3 id="off-means">「关掉」到底关掉了什么</h3>
       <p>关掉 = <strong>对模型隐藏</strong>，不是加锁、不是改文件、不是禁用。</p>
@@ -523,17 +526,24 @@
             <tr><th style="width:40%">位置</th><th>内容</th></tr>
           </thead>
           <tbody>
-            <tr><td>输入框左侧（Continue 那几个开关同一排）</td><td>药丸：<code>技能 58/62</code>，点开是面板，默认停在<strong>本会话</strong>页</td></tr>
-            <tr><td>会话顶部 workspace 名字旁</td><td>工作区默认入口，点开面板停在<strong>本工作区</strong>页</td></tr>
-            <tr><td>设置页新增一页「技能开关」</td><td>全局默认，列出全部 skill</td></tr>
+            <tr><td>会话标题栏右上角</td><td>「技能 62/62」，点开是面板，默认停在<strong>本会话</strong>页</td></tr>
+            <tr><td>设置页新增一页「技能开关」</td><td>全局默认，列出全部 skill（含锁定的插件自带项）</td></tr>
           </tbody>
         </table>
       </div>
 
-      <p>面板三个 tab：本会话 / 本工作区 / 全局默认。顶部一句话说明当前层影响谁。每行：skill 名、来源徽章（谁决定的）、两行描述、右侧开关。搜索框按名称和描述过滤。底部「本层恢复默认」把这一层的覆盖清空，回到继承。</p>
+      <p>面板两个 tab：本会话 / 全局默认。顶部一句话说明当前层影响谁。每行：skill 名、来源徽章（谁决定的）、两行描述、右侧开关。搜索框按名称和描述过滤。底部「本层恢复默认」把这一层的覆盖清空，回到继承。</p>
 
-      <h3 id="workspace-key">工作区怎么识别</h3>
-      <p>按目录路径，取<strong>最近的含 <code>.git</code> 的祖先</strong>；没有 <code>.git</code> 就用自己的路径。这跟 DSH 自己找项目根的逻辑一致，所以 <code>Personal/某项目/src</code> 里开的会话和 <code>Personal/某项目</code> 里开的会话共享同一套工作区开关。</p>
+      <h3 id="workspace-layer">数据层的工作区层</h3>
+      <p>界面上没有工作区这一档，但状态文件里的 <code>workspaces</code> 字段是<strong>有效</strong>的：按目录（最近的含 <code>.git</code> 的祖先）给默认值，子目录里的会话会继承。</p>
+      <p>没有 UI 入口的原因：工作区行的「··」菜单条目是宿主 <code>@deepseek-ai/dsh-client-ui-workspace</code> 硬编码的（只有重命名、删除），<code>ProjectRowItem</code> 整个函数没有一处 <code>renderSlot</code>，也没有可追加的 slot；要加就得整体替换工作区浏览器（<code>sidebar.workspaces</code> 是 <code>single</code>），风险远大于收益。所以要按目录设定默认值，现在得手写状态文件：</p>
+      <pre><code>{
+  "version": 1,
+  "global": {},
+  "workspaces": { "/Users/z/proj": { "office": false } },
+  "sessions": {}
+}</code></pre>
+      <p>这一层有测试覆盖，确认子目录会话会继承、其他目录不受影响。</p>
 
       <h3 id="when">生效时机</h3>
       <p><strong>下一步就生效，不用重开会话。</strong>因为 skill 目录本来就是每步重算的；拨完开关，内置的目录消息会检测到条目变化并自动发布替换目录。</p>
@@ -553,7 +563,7 @@
     <section id="tradeoffs">
       <h2>已知取舍</h2>
       <ul>
-        <li><strong>会话层不持久化。</strong>重开会话回到工作区默认。这是有意的：会话级调整是「今天这一次」的意思，留着反而会让下一天莫名其妙少几个 skill。</li>
+        <li><strong>会话层不持久化。</strong>重开会话回到全局默认。这是有意的：会话级调整是「今天这一次」的意思，留着反而会让下一天莫名其妙少几个 skill。</li>
         <li><strong>状态是进程内缓存 + 文件。</strong>每步读一次文件（几 KB），换来「手工改文件也能立刻生效」。</li>
         <li><strong>工作区键是绝对路径。</strong>目录改名或搬家，那套工作区开关就失配了（旧键留在文件里，不影响使用，只是成为孤儿）。</li>
       </ul>

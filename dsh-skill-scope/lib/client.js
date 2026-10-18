@@ -7,15 +7,15 @@
  * entry never activates. This file registers through
  * `window.__ModuleLoader__.load` and is intentionally NOT ESM.
  *
- * Surfaces:
- *   - `conversation.input.left` — a compact pill in the composer row that opens
- *     the switch list (session layer by default, workspace and global one tab
- *     away), each row showing which layer decided its current state.
- *   - `conversation.session.header.utilities` — a small workspace-level control
- *     next to the session title's tools, for the defaults this workspace
- *     inherits and overrides.
- *   - `settings.section` — a "技能开关" settings page listing every skill with
- *     its global default.
+ * Surfaces (two layers: this session, and the global default):
+ *   - `conversation.input.dock` — a full-width bar above the composer card:
+ *     how much of the catalog this session sees, plus the button that opens the
+ *     switch list.
+ *   - `settings.section` — a "技能开关" settings page holding the global defaults.
+ *
+ * There is no workspace layer. The workspace row's "..." menu is hard-coded in
+ * `@deepseek-ai/dsh-client-ui-workspace` (rename + delete only) and exposes no
+ * slot, so there is no honest place to hang a workspace-scoped entrance.
  *
  * Styling uses host theme tokens only, so light/dark and theme swaps follow
  * the host. All copy goes through the locale service.
@@ -36,60 +36,62 @@ window.__ModuleLoader__.load({
 
     var zh = {
       title: '技能开关',
-      intro: '按会话、工作区、全局三层控制技能目录。关掉的技能不会出现在模型看到的目录里，也不会占用上下文；再次打开后回到目录，需要时再手动加载。',
+      intro: '控制技能目录：本会话的临时开关，以及所有会话共用的全局默认。关掉的技能不会出现在模型看到的目录里，也不占上下文；再次打开就回来，需要正文时再手动加载。',
       tabSession: '本会话',
-      tabWorkspace: '本工作区',
       tabGlobal: '全局默认',
-      sessionHint: '只影响当前会话，重开会话回到工作区默认。',
-      workspaceHint: '影响这个目录下的所有会话。',
-      globalHint: '影响所有工作区和会话，是继承的起点。',
+      sessionHint: '只影响当前会话；关掉的技能模型看不到，也不占上下文。',
+      globalHint: '影响所有会话，是继承的起点。',
       enabled: '显示',
       disabled: '隐藏',
       load: '立即加载',
       loaded: '已排入下一步',
+      pluginOwned: '插件自带',
+      pluginOwnedHint: '由插件注册，关掉可能影响该插件；只列出不可开关。',
       inherit: '跟随上层',
       originDefault: '默认',
       originGlobal: '全局',
-      originWorkspace: '工作区',
       originSession: '会话',
       reset: '本层恢复默认',
       count: '{enabled}/{total}',
       pillTitle: '技能开关：{enabled}/{total} 可见',
       pillLabel: '技能',
+      hiddenCount: '已隐藏 {n}',
+      openPanel: '管理',
+      loading: '读取中…',
       close: '关闭',
       filter: '筛选技能',
       empty: '这个目录里没有技能。',
       failed: '操作失败：{message}',
-      workspaceUnknown: '未识别工作区',
     };
 
     var en = {
       title: 'Skill switches',
-      intro: 'Control the skill catalog at three layers: session, workspace, global. A hidden skill leaves the model catalog and stops costing context; turning it back on restores it, and loading it is a separate click.',
+      intro: 'Control the skill catalog: this session\'s switches, plus the global default shared by every session. A hidden skill leaves the model catalog and stops costing context; turning it back on restores it, and loading its body is a separate click.',
       tabSession: 'This session',
-      tabWorkspace: 'This workspace',
       tabGlobal: 'Global defaults',
-      sessionHint: 'Affects this session only; reopening it falls back to the workspace defaults.',
-      workspaceHint: 'Affects every session opened in this directory.',
-      globalHint: 'Affects every workspace and session; the root of inheritance.',
+      sessionHint: 'Affects this session only; hidden skills leave the model catalog and stop costing context.',
+      globalHint: 'Affects every session; the root of inheritance.',
       enabled: 'Shown',
       disabled: 'Hidden',
       load: 'Load now',
       loaded: 'Queued for the next step',
+      pluginOwned: 'plugin',
+      pluginOwnedHint: 'Registered by a plugin; hiding it could break that plugin, so it is listed but locked.',
       inherit: 'Inherit',
       originDefault: 'Default',
       originGlobal: 'Global',
-      originWorkspace: 'Workspace',
       originSession: 'Session',
       reset: 'Reset this layer',
       count: '{enabled}/{total}',
       pillTitle: 'Skill switches: {enabled}/{total} visible',
       pillLabel: 'Skills',
+      hiddenCount: '{n} hidden',
+      openPanel: 'Manage',
+      loading: 'loading…',
       close: 'Close',
       filter: 'Filter skills',
       empty: 'No skills in this directory.',
       failed: 'Action failed: {message}',
-      workspaceUnknown: 'Unknown workspace',
     };
 
     /**
@@ -99,6 +101,9 @@ window.__ModuleLoader__.load({
      * @returns {string} the formatted string.
      */
     function format(template, values) {
+      // A missing dictionary key must never blank a surface: fall back to the
+      // key itself, and to an empty string for a template that is not a string.
+      if (typeof template !== 'string') return '';
       if (values === undefined) return template;
       return template.replace(/\{([a-zA-Z]+)\}/g, (match, key) =>
         Object.prototype.hasOwnProperty.call(values, key) ? String(values[key]) : match,
@@ -107,11 +112,13 @@ window.__ModuleLoader__.load({
 
     // ── styles ──────────────────────────────────────────────────────────────
     var CSS = `
-.sks-pill{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 10px;border-radius:999px;border:.5px solid var(--dsw-alias-border-l3);background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-secondary);font:inherit;font-size:12px;line-height:18px;cursor:pointer;white-space:nowrap}
-.sks-pill:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
-.sks-pill[data-open="true"]{border-color:var(--dsw-alias-state-business-primary);color:var(--dsw-alias-label-primary)}
-.sks-pillCount{font-variant-numeric:tabular-nums;color:var(--dsw-alias-label-tertiary)}
-.sks-panelWrap{position:fixed;z-index:1200}
+.sks-corner{display:flex;align-items:center}
+.sks-cornerBtn{display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 9px;border-radius:999px;border:.5px solid transparent;background:transparent;color:var(--dsw-alias-label-tertiary);font:inherit;font-size:11.5px;line-height:18px;cursor:pointer;white-space:nowrap;transition:background .12s,color .12s}
+.sks-cornerBtn:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
+.sks-cornerBtn[data-open="true"]{background:var(--dsw-alias-bg-layer-3);color:var(--dsw-alias-label-primary)}
+.sks-cornerLabel{font-weight:500}
+.sks-cornerCount{font-variant-numeric:tabular-nums;color:var(--dsw-alias-label-secondary)}
+.sks-cornerOff{font-variant-numeric:tabular-nums;color:var(--dsw-alias-label-tertiary)}
 .sks-panel{position:relative;z-index:1200;width:min(420px,calc(100vw - 24px));max-height:min(560px,calc(100vh - 96px));display:flex;flex-direction:column;border-radius:var(--dsw-radius-lg);background:var(--dsw-alias-bg-layer-2);box-shadow:var(--dsw-elevation-prominent);border:.5px solid var(--dsw-alias-border-l1);overflow:hidden}
 .sks-head{display:flex;align-items:center;gap:8px;padding:10px 12px;border-bottom:.5px solid var(--dsw-alias-border-l2)}
 .sks-headTitle{font-size:13px;font-weight:600;color:var(--dsw-alias-label-primary);flex:1;min-width:0}
@@ -136,12 +143,12 @@ window.__ModuleLoader__.load({
 .sks-desc{font-size:11.5px;line-height:17px;color:var(--dsw-alias-label-tertiary);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .sks-badge{flex:none;height:16px;padding:0 6px;border-radius:var(--dsw-radius-xs);font-size:10px;line-height:16px;background:var(--dsw-alias-bg-layer-3);color:var(--dsw-alias-label-tertiary)}
 .sks-badge[data-origin="session"]{background:var(--dsw-alias-state-business-primary);color:var(--dsw-alias-label-primary-inverted)}
-.sks-badge[data-origin="workspace"]{background:var(--dsw-alias-bg-module-platform);color:var(--dsw-alias-label-secondary)}
 .sks-badge[data-origin="global"]{background:var(--dsw-alias-bg-layer-3);color:var(--dsw-alias-label-secondary)}
 .sks-side{flex:none;display:flex;flex-direction:column;align-items:flex-end;gap:6px}
 .sks-switch{position:relative;width:34px;height:20px;border-radius:999px;border:0;padding:0;cursor:pointer;background:var(--dsw-alias-bg-layer-4);transition:background .12s}
 .sks-switch[data-on="true"]{background:var(--dsw-alias-state-business-primary)}
 .sks-switch:disabled{opacity:.5;cursor:default}
+.sks-locked{height:18px;padding:0 6px;border-radius:var(--dsw-radius-xs);border:.5px solid var(--dsw-alias-border-l3);color:var(--dsw-alias-label-tertiary);font-size:10px;line-height:17px;white-space:nowrap;cursor:help}
 .sks-knob{position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:var(--dsw-alias-label-primary-inverted);transition:transform .12s}
 .sks-switch[data-on="true"] .sks-knob{transform:translateX(14px)}
 .sks-load{border:0;background:transparent;color:var(--dsw-alias-label-tertiary);font:inherit;font-size:10.5px;cursor:pointer;padding:0}
@@ -154,8 +161,6 @@ window.__ModuleLoader__.load({
 .sks-sectionIntro{margin:0;font-size:12.5px;line-height:19px;color:var(--dsw-alias-label-secondary)}
 .sks-sectionBar{display:flex;align-items:center;gap:8px}
 .sks-sectionList{display:flex;flex-direction:column;gap:2px;border:.5px solid var(--dsw-alias-border-l2);border-radius:var(--dsw-radius-lg);padding:4px}
-.sks-headerBtn{height:26px;padding:0 8px;border-radius:var(--dsw-radius-md);border:.5px solid var(--dsw-alias-border-l3);background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:11.5px;cursor:pointer;white-space:nowrap}
-.sks-headerBtn:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
 `;
 
     /** Inject the stylesheet once. */
@@ -241,23 +246,25 @@ window.__ModuleLoader__.load({
         h(
           'div',
           { className: 'sks-side' },
-          h(
-            'button',
-            {
-              type: 'button',
-              className: 'sks-switch',
-              role: 'switch',
-              'aria-checked': row.enabled ? 'true' : 'false',
-              'aria-label': row.name,
-              title: row.enabled ? t.enabled : t.disabled,
-              'data-on': row.enabled ? 'true' : 'false',
-              disabled: props.busy ? true : undefined,
-              onClick: function () {
-                props.onToggle(row, !row.enabled);
-              },
-            },
-            h('span', { className: 'sks-knob' }),
-          ),
+          row.switchable === false
+            ? h('span', { className: 'sks-locked', title: t.pluginOwnedHint }, t.pluginOwned)
+            : h(
+                'button',
+                {
+                  type: 'button',
+                  className: 'sks-switch',
+                  role: 'switch',
+                  'aria-checked': row.enabled ? 'true' : 'false',
+                  'aria-label': row.name,
+                  title: row.enabled ? t.enabled : t.disabled,
+                  'data-on': row.enabled ? 'true' : 'false',
+                  disabled: props.busy ? true : undefined,
+                  onClick: function () {
+                    props.onToggle(row, !row.enabled);
+                  },
+                },
+                h('span', { className: 'sks-knob' }),
+              ),
           props.canLoad
             ? h(
                 'button',
@@ -293,7 +300,7 @@ window.__ModuleLoader__.load({
             if (query === '') return true;
             return (row.name + ' ' + (row.description || '')).toLowerCase().indexOf(query) !== -1;
           });
-      var hint = layer === 'session' ? t.sessionHint : layer === 'workspace' ? t.workspaceHint : t.globalHint;
+      var hint = layer === 'session' ? t.sessionHint : t.globalHint;
       return h(
         'div',
         { className: 'sks-panel', role: 'dialog', 'aria-label': t.title },
@@ -327,18 +334,6 @@ window.__ModuleLoader__.load({
               onClick: function () { controller.setLayer('session'); },
             },
             t.tabSession,
-          ),
-          h(
-            'button',
-            {
-              type: 'button',
-              className: 'sks-tab',
-              role: 'tab',
-              'aria-selected': layer === 'workspace' ? 'true' : 'false',
-              'data-active': layer === 'workspace' ? 'true' : 'false',
-              onClick: function () { controller.setLayer('workspace'); },
-            },
-            t.tabWorkspace,
           ),
           h(
             'button',
@@ -554,32 +549,44 @@ window.__ModuleLoader__.load({
     }
 
     /**
-     * The composer pill plus its popover.
+     * Compact status pill in the session header's far-right corner
+     * (`conversation.session.header.corner`).
+     *
+     * Reads as a quiet counter — "技能 62/62" — and opens the switch panel on
+     * click. Kept in the header rather than above the composer because the
+     * composer dock only renders once a session has an input state; a brand-new
+     * session would leave the control invisible exactly when the user first
+     * wants it.
      * @param {object} props - injected controller and locale.
      * @returns {object|null} React element.
      */
-    function ComposerPill(props) {
+    function HeaderCornerPill(props) {
       var controller = props.controller;
       var state = useStore(controller.store);
       var t = props.t;
       var data = state.data;
       var counts = data === undefined ? undefined : data.counts;
-      var left = undefined;
-      var top = undefined;
+      var off = counts === undefined ? 0 : counts.total - counts.enabled;
+      var left;
+      var top;
+      var placement = 'up';
       if (state.open && state.anchor !== undefined && typeof state.anchor.getBoundingClientRect === 'function') {
         var rect = state.anchor.getBoundingClientRect();
         var width = Math.min(420, window.innerWidth - 24);
         left = Math.max(12, Math.min(rect.left, window.innerWidth - width - 12));
-        top = Math.min(rect.bottom + 8, window.innerHeight - 120);
+        // The dock sits above the composer, so the panel opens upward and
+        // clamps to the viewport rather than running off the top of the screen.
+        top = rect.top - 8;
+        placement = 'up';
       }
       return h(
-        'span',
-        { style: { display: 'inline-flex' } },
+        'div',
+        { className: 'sks-corner' },
         h(
           'button',
           {
             type: 'button',
-            className: 'sks-pill',
+            className: 'sks-cornerBtn',
             'data-open': state.open ? 'true' : 'false',
             title: counts === undefined
               ? t.title
@@ -589,48 +596,25 @@ window.__ModuleLoader__.load({
               else controller.open(event.currentTarget);
             },
           },
-          h('span', null, t.pillLabel),
+          h('span', { className: 'sks-cornerLabel' }, t.pillLabel),
           counts === undefined
+            ? h('span', { className: 'sks-cornerCount' }, t.loading)
+            : h('span', { className: 'sks-cornerCount' }, format(t.count, { enabled: counts.enabled, total: counts.total })),
+          counts === undefined || off === 0
             ? null
-            : h('span', { className: 'sks-pillCount' }, format(t.count, { enabled: counts.enabled, total: counts.total })),
+            : h('span', { className: 'sks-cornerOff' }, format(t.hiddenCount, { n: off })),
         ),
         state.open && left !== undefined
           ? h(
               'div',
-              { className: 'sks-panelWrap', style: { left: left + 'px', top: top + 'px' } },
+              {
+                className: 'sks-panelWrap',
+                'data-placement': placement,
+                style: { left: left + 'px', top: top + 'px', transform: 'translateY(-100%)' },
+              },
               h(SwitchPanel, { controller: controller, t: t }),
             )
           : null,
-      );
-    }
-
-    /**
-     * A workspace-scoped button in the session header.
-     * @param {object} props - injected controller and locale.
-     * @returns {object|null} React element.
-     */
-    function HeaderWorkspaceButton(props) {
-      var controller = props.controller;
-      var state = useStore(controller.store);
-      var t = props.t;
-      var data = state.data;
-      var label = data === undefined || data.workspaceKey === undefined || data.workspaceKey === null
-        ? t.tabWorkspace
-        : t.tabWorkspace;
-      return h(
-        'button',
-        {
-          type: 'button',
-          className: 'sks-headerBtn',
-          title: data === undefined ? t.workspaceHint : data.workspaceKey || t.workspaceUnknown,
-          onClick: function (event) {
-            controller.setLayer('workspace');
-            if (state.open) controller.close();
-            else controller.open(event.currentTarget);
-          },
-        },
-        label,
-        data === undefined ? null : h('span', { style: { opacity: 0.7, marginLeft: '6px' } }, format(t.count, { enabled: data.counts.enabled, total: data.counts.total })),
       );
     }
 
@@ -718,40 +702,20 @@ window.__ModuleLoader__.load({
 
       var disposers = [];
 
-      // Composer pill: the session layer is the default view.
+      // Session header, far-right corner: the session entrance.
       disposers.push(
-        ctx.slots.inject('conversation.input.left', function () {
+        ctx.slots.inject('conversation.session.header.corner', function () {
           return ctx.slots.register(
             {
-              name: 'conversation.input.left',
-              id: 'skill-scope-pill',
-              order: 20,
+              name: 'conversation.session.header.corner',
+              id: 'skill-scope-corner',
               locale: NS,
               inject: function (sessionId) {
                 controller.bind(sessionId, undefined);
                 return { controller: controller, t: t };
               },
             },
-            ComposerPill,
-          );
-        }),
-      );
-
-      // Workspace control beside the session header tools.
-      disposers.push(
-        ctx.slots.inject('conversation.session.header.utilities', function () {
-          return ctx.slots.register(
-            {
-              name: 'conversation.session.header.utilities',
-              id: 'skill-scope-workspace',
-              order: 30,
-              locale: NS,
-              inject: function (sessionId) {
-                controller.bind(sessionId, undefined);
-                return { controller: controller, t: t };
-              },
-            },
-            HeaderWorkspaceButton,
+            HeaderCornerPill,
           );
         }),
       );

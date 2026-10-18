@@ -85,6 +85,16 @@ test('the bundle patch and the naming manifest agree on the loader row', () => {
   assert.equal(naming.plugin.packageName, '@zhongqing/dsh-skill-scope');
 });
 
+test('the browser half mounts the two supported surfaces only', () => {
+  const source = read('lib/client.js');
+  assert.match(source, /conversation\.session\.header\.corner/, 'session entrance lives in the header corner');
+  assert.match(source, /settings\.section/, 'global defaults live in settings');
+  // The workspace layer was dropped: its row menu is hard-coded in the host and
+  // exposes no slot, so no surface may claim to offer it.
+  assert.doesNotMatch(source, /conversation\.session\.header\.utilities/);
+  assert.doesNotMatch(source, /conversation\.input\.left/);
+});
+
 test('every declared route appears in the host half', () => {
   const naming = JSON.parse(read('dsh-plugin.naming.json'));
   const source = read('lib/index.js');

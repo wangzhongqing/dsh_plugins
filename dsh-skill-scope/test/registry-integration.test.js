@@ -39,6 +39,7 @@ async function bootRegistry(names) {
         invocation: { modelInvocable: true, userInvocable: true },
         rank: 500,
         provider: 'filesystem',
+        path: `/tmp/skills/${name}/SKILL.md`,
       }));
     },
     async get(candidate) {

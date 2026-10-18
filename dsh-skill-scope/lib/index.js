@@ -297,9 +297,18 @@ export function apply(ctx, config = {}) {
     }
   };
 
-  ctx.on('agent/created', ({ agent }) => {
+  // Awaited, not fire-and-forget: `agent/created` is dispatched through
+  // `ctx.serial`, so returning the promise holds the creation announcement
+  // until the shadows are registered. That closes the race where the agent's
+  // first request could see an unfiltered catalog, instead of relying on the
+  // pre-step hook to win a waterfall ordering contest.
+  ctx.on('agent/created', async ({ agent }) => {
     live.set(agent, true);
-    reconcile(agent).catch((error) => ctx.logger?.warn?.(`skill-scope: initial sync failed: ${String(error)}`));
+    try {
+      await reconcile(agent);
+    } catch (error) {
+      ctx.logger?.warn?.(`skill-scope: initial sync failed: ${String(error)}`);
+    }
   });
   ctx.on('agent/disposed', ({ agent }) => {
     const applied = appliedStubs.get(agent);
@@ -330,6 +339,40 @@ export function apply(ctx, config = {}) {
   });
 
   /**
+   * Find a live agent to borrow a catalog scope from when no session was named.
+   *
+   * Prefers an agent whose working directory is the queried one, then any live
+   * agent. Returns undefined when nothing is live, which leaves the caller with
+   * the host-plane catalog.
+   * @param {string} cwd - working directory the caller asked about.
+   * @param {object} agents - the agents service, when mounted.
+   * @returns {Promise<object|undefined>} a live agent usable as a scope.
+   */
+  const anyLiveAgentFor = async (cwd, agents) => {
+    let all = [];
+    try {
+      all = typeof agents?.list === 'function' ? agents.list() : [];
+    } catch {
+      return undefined;
+    }
+    if (!Array.isArray(all) || all.length === 0) return undefined;
+    let best;
+    for (const candidate of all) {
+      if (candidate?.ctx === undefined) continue;
+      best ??= candidate;
+      let candidateCwd = candidate?.session?.header?.cwd;
+      try {
+        const workingDirectory = optional(ctx, 'workingDirectory');
+        if (workingDirectory !== undefined) candidateCwd = await workingDirectory.ensure(candidate);
+      } catch {
+        /* keep the header cwd */
+      }
+      if (candidateCwd === cwd) return candidate;
+    }
+    return best;
+  };
+
+  /**
    * Build the panel payload for one session: every skill the model could see,
    * its resolved switch, and which layer decided it.
    * @param {{sessionId?: string, cwd?: string}} query - resolution inputs.
@@ -343,9 +386,17 @@ export function apply(ctx, config = {}) {
     if (typeof cwd !== 'string' || cwd === '') cwd = process.cwd();
     const workspaceKey = findProjectRoot(cwd, (path) => existsSync(path), markers);
     const sessionId = query.sessionId;
+    // The catalog is per-scope, not global: presets mount their own
+    // `skill-filesystem` row, so every user skill lives in that preset's layer
+    // and a scope-less read sees only the host-plane runtime skills (the
+    // univer-office family). With no live session to borrow a scope from, walk
+    // the live agents and use the first one whose working directory matches —
+    // that is the most representative catalog this host can offer.
+    let scope = agent;
+    if (scope === undefined) scope = await anyLiveAgentFor(cwd, agents);
     const skills = await ctx.skills.list({
       cwd,
-      ...(agent === undefined ? {} : { scope: agent }),
+      ...(scope === undefined ? {} : { scope }),
     });
     const keys = { workspaceKey, sessionId };
     const rows = skills.map((skill) => {
@@ -358,6 +409,13 @@ export function apply(ctx, config = {}) {
         enabled: decision.enabled,
         origin: decision.origin,
         originLabel: decision.origin === 'default' ? '默认' : LAYER_LABELS[decision.origin],
+        // A skill without an instruction file is registered by a plugin at
+        // runtime, not installed by the user. Those belong to whichever plugin
+        // owns them (univer-office routes through `office`), so hiding one could
+        // break that plugin's own behavior. They stay listed and visible but
+        // cannot be switched off.
+        switchable: typeof skill.path === 'string' && skill.path !== '',
+        source: typeof skill.path === 'string' && skill.path !== '' ? 'installed' : 'plugin',
         layers: {
           global: layerMap(current, 'global', undefined)[skill.name],
           workspace: layerMap(current, 'workspace', workspaceKey)[skill.name],
@@ -365,20 +423,33 @@ export function apply(ctx, config = {}) {
         },
       };
     });
-    const counts = countEnabled(current, rows.map((row) => row.name), keys);
+    // Count only what the user controls; including plugin-owned skills would
+    // report a total that can never change.
+    const counts = countEnabled(
+      current,
+      rows.filter((row) => row.switchable).map((row) => row.name),
+      keys,
+    );
+    const visible = rows.filter((row) => row.enabled).length;
     return {
       cwd,
       workspaceKey,
       sessionId: sessionId ?? null,
       counts,
+      visible,
       layers: LAYER_LABELS,
       skills: rows,
     };
   };
 
   // ── HTTP routes ────────────────────────────────────────────────────────────
-  const webServer = optional(ctx, 'webServer');
-  if (webServer !== undefined) {
+  // `webServer` is read lazily, inside `ctx.inject`. A plain `ctx.get()` at
+  // apply() time runs before the host's webserver row is mounted, so it would
+  // return undefined and silently register nothing — the panel then loads with
+  // no data while the browser half looks perfectly fine.
+  ctx.inject(['webServer'], (routeCtx) => {
+    const webServer = optional(routeCtx, 'webServer') ?? routeCtx.webServer;
+    if (webServer === undefined) return;
     const json = (res, status, body) => {
       res.statusCode = status;
       res.setHeader('content-type', 'application/json; charset=utf-8');
@@ -459,6 +530,21 @@ export function apply(ctx, config = {}) {
           if (enabled !== true && enabled !== false && enabled !== null) {
             json(res, 400, { error: 'enabled must be true, false, or null' });
             return;
+          }
+          // Plugin-owned skills (registered at runtime, no instruction file) are
+          // not the user's to hide: the owning plugin routes through them.
+          try {
+            const described = await describe({
+              sessionId: typeof body.sessionId === 'string' ? body.sessionId : undefined,
+              cwd: typeof body.cwd === 'string' ? body.cwd : undefined,
+            });
+            const target = described.skills.find((row) => row.name === skillName);
+            if (target !== undefined && target.switchable === false) {
+              json(res, 409, { error: `skill "${skillName}" is owned by a plugin and cannot be switched` });
+              return;
+            }
+          } catch {
+            /* fall through: a failed probe must not block a legitimate write */
           }
           try {
             await commit(layer, typeof key === 'string' && key !== '' ? key : undefined, skillName, enabled);
@@ -548,11 +634,11 @@ export function apply(ctx, config = {}) {
         },
       },
     ];
-    ctx.effect(() => {
+    routeCtx.effect(() => {
       const disposers = routes.map((route) => webServer.register(route));
       return () => {
         for (const dispose of disposers) dispose();
       };
     }, 'skill-scope: routes');
-  }
+  });
 }

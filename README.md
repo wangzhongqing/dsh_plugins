@@ -10,6 +10,7 @@ Agent skills 在独立仓库：[**my_skills**](https://github.com/wangzhongqing/
 |---|---|---|
 | [dsh-skill-scope](./dsh-skill-scope/) | 按会话 / 工作区 / 全局三层控制技能目录，不改任何 `SKILL.md` · [产品设计](./dsh-skill-scope/docs/product-design.html) · [技术方案](./dsh-skill-scope/docs/technical-design.html) | MIT |
 | [dsh-terminal-locale-font](./dsh-terminal-locale-font/) | 修复 DSH 侧栏终端的方块/问号乱码与 `command not found` | MIT |
+| [dsh-opencode-zen-connect](./dsh-opencode-zen-connect/) | 把本机 OpenCode 免费模型接入 DSH：零配置、只列免费模型、支持推理强度档位 · [优化记录](./dsh-opencode-zen-connect/OPTIMIZATIONS.md) | MIT |
 
 ## 安装
 

@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "policy": "dsh-plugin-naming/v1",
+  "plugin": {
+    "namespace": "zhongqing",
+    "name": "opencode-zen-connect",
+    "coordinate": "zhongqing/opencode-zen-connect",
+    "packageName": "dsh-opencode-zen-connect"
+  },
+  "names": {
+    "pluginNames": ["dsh-opencode-zen-connect"],
+    "loaderIds": ["llm-opencode-zen"],
+    "services": [],
+    "tools": [],
+    "commands": [],
+    "skills": [],
+    "skillProviders": [],
+    "events": [],
+    "settingsNamespaces": [],
+    "routes": []
+  }
+}

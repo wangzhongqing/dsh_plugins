@@ -1,0 +1,63 @@
+{
+  "name": "dsh-opencode-zen-connect",
+  "displayName": "DSH OpenCode Zen Connect",
+  "description": "把本机 OpenCode 的免费模型（OpenCode Zen 免费层）接入 DeepSeek Harness —— 零配置、零费用、带推理强度档位。 Bring OpenCode's free models into DSH with zero configuration, free-only model discovery, and reasoning-effort tiers.",
+  "version": "0.2.0",
+  "author": "wangzhongqing",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/wangzhongqing/dsh_plugins.git"
+  },
+  "homepage": "https://github.com/wangzhongqing/dsh_plugins/tree/main/dsh-opencode-zen-connect#readme",
+  "bugs": "https://github.com/wangzhongqing/dsh_plugins/issues",
+  "keywords": [
+    "dsh-plugin",
+    "deepseek-harness",
+    "deepseek",
+    "opencode",
+    "opencode-zen",
+    "model-provider",
+    "free-models",
+    "reasoning-effort"
+  ],
+  "type": "module",
+  "main": "dist/index.js",
+  "exports": {
+    ".": "./dist/index.js",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "cordis.patch.yml",
+    "dsh.plugin.json",
+    "dsh-plugin.naming.json",
+    "README.md",
+    "README.en.md",
+    "OPTIMIZATIONS.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "test": "node --test tests/*.test.mjs",
+    "prepack": "npm run build"
+  },
+  "engines": {
+    "node": "^22.19.0 || >=24.0.0"
+  },
+  "dependencies": {
+    "@earendil-works/pi-ai": "0.87.1"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": ">=4.0.4 <5.0.0-0",
+    "@deepseek-ai/dsh-attachment": ">=0.2.0-rc.2 <0.2.1-0 || >=0.2.1-rc.1 <0.3.0-0",
+    "@deepseek-ai/dsh-llm": ">=0.2.0-rc.2 <0.2.1-0 || >=0.2.1-rc.1 <0.3.0-0",
+    "@deepseek-ai/dsh-llm-pi-ai": ">=0.2.0-rc.2 <0.2.1-0 || >=0.2.1-rc.1 <0.3.0-0"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  }
+}

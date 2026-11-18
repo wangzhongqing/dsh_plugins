@@ -1,0 +1,13 @@
+{
+  "id": "@zhongqing/dsh-opencode-zen-connect",
+  "version": "0.2.0",
+  "main": "./dist/index.js",
+  "description": "把本机 OpenCode 的免费模型（OpenCode Zen 免费层）接入 DeepSeek Harness：零配置、只列出免费模型、支持推理强度档位。",
+  "engines": {
+    "dsh": ">=0.1.7-rc.1"
+  },
+  "contributes": {
+    "tools": [],
+    "skills": []
+  }
+}

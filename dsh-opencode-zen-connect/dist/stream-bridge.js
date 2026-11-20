@@ -1,47 +1,27 @@
 /**
  * Translate one OpenCode session's event stream into OpenAI-compatible SSE.
+ *
+ * The bridge keeps one OpenCode session per DSH conversation and reuses it
+ * across turns, so the model holds real conversational state instead of
+ * re-reading a flattened transcript. The session is created with the DSH
+ * workspace as its `directory`, which is what lets OpenCode's own tools
+ * (bash/read/glob/grep/edit/write/...) run in the right place — their schemas
+ * cannot be forwarded, the message API only accepts `{tool: boolean}` switches.
  * @module dsh-opencode-zen-connect/stream-bridge
  */
 
 import { Readable } from 'node:stream'
-import { createOpenCodeSession } from './opencode-server.js'
 
-function serializeOpenAIHistory(messages) {
-  if (messages.length === 0) return 'Reply with exactly: PONG'
-  const lines = []
-  let idx = 1
-  for (const raw of messages) {
-    const msg = raw
-    const role = msg.role ?? 'user'
-    let text = ''
-    if (typeof msg.content === 'string') {
-      text = msg.content
-    } else if (Array.isArray(msg.content)) {
-      const parts = []
-      for (const c of msg.content) {
-        if (c.type === 'text' && typeof c.text === 'string' && c.text.length > 0) {
-          parts.push(c.text)
-        } else if (c.type === 'image') {
-          parts.push('[image attached]')
-        }
-      }
-      text = parts.join('\n')
-    }
-    if (text.length > 0) {
-      lines.push(`[${idx}] ${role}: ${text}`)
-      idx += 1
-    }
-  }
-  lines.push('')
-  lines.push('Answer the latest message above, using the conversation context provided.')
-  return lines.join('\n')
-}
+import { openLiveEventStream } from './event-stream.js'
+import {
+  conversationKey,
+  lastUserText,
+  systemText,
+  workdirOf,
+} from './message-shape.js'
+import { sendOpenCodeMessage } from './opencode-server.js'
+import { ensureSession, forgetSession } from './session-registry.js'
 
-/**
- * For one OpenAI /v1/chat/completions request, create an OpenCode session,
- * send the serialized history, follow the event stream, and return a Node
- * Readable that yields OpenAI-compatible SSE bytes.
- */
 export async function bridgeOpenCodeToOpenAISSE(params) {
   const { opencodeUrl, model, messages, variant, signal, logger } = params
 
@@ -139,67 +119,90 @@ export async function bridgeOpenCodeToOpenAISSE(params) {
   }
 
   void (async () => {
+    const workdir = workdirOf(messages)
+    const key = conversationKey(messages, workdir)
     try {
-      const sessionId = await createOpenCodeSession(opencodeUrl, `dsh-opencode-zen-connect ${model}`, signal)
+      const sessionId = await ensureSession(opencodeUrl, key, workdir, signal)
       emitSSEStart()
 
-      const promptPromise = (async () => {
-        const res = await fetch(`${opencodeUrl}/session/${sessionId}/message`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            providerID: 'opencode',
-            modelID: model,
+      // OpenCode does not replay events, so the subscription has to be live
+      // before the prompt goes out.
+      const events = await openLiveEventStream(opencodeUrl, sessionId, workdir, signal)
+      const system = systemText(messages)
+
+      let promptPromise
+      try {
+        promptPromise = sendOpenCodeMessage(
+          opencodeUrl,
+          sessionId,
+          workdir,
+          {
+            model: { providerID: 'opencode', modelID: model },
             // OpenCode accepts a top-level `variant` (its reasoning-effort
             // selector). DSH sends it as `reasoning_effort`; the shim forwards
             // it to us; simple tasks ignore it, reasoning models apply it.
             ...(variant !== undefined ? { variant } : {}),
-            parts: [{ type: 'text', text: serializeOpenAIHistory(messages) }],
-          }),
+            ...(system.length > 0 ? { system } : {}),
+            parts: [{ type: 'text', text: lastUserText(messages) }],
+          },
           signal,
-        })
-        if (!res.ok) {
-          const bodyText = await res.text().catch(() => '')
-          throw new Error(`opencode message failed: HTTP ${res.status} ${bodyText.slice(0, 300)}`)
-        }
-        const body = await res.json()
-        if (body.info?.error !== undefined) {
-          const data = body.info.error.data
-          throw new Error(`opencode model error: ${data?.message ?? body.info.error.name} (status ${data?.statusCode})`)
-        }
-        return {
-          usage: body.info?.tokens === undefined
-            ? undefined
-            : { input: body.info.tokens.input ?? 0, output: body.info.tokens.output ?? 0 },
-        }
-      })()
-
-      let finishedByEvent = false
-      let usageFromPrompt
-      try {
-        const { streamOpenCodeSessionEvents } = await import('./opencode-server.js')
-        for await (const delta of streamOpenCodeSessionEvents(opencodeUrl, sessionId, signal)) {
-          emitDelta(delta)
-        }
-        finishedByEvent = true
+        )
       } catch (error) {
-        const msg = error instanceof Error ? error.message : String(error)
-        if (!msg.includes('aborted') && !(signal?.aborted)) {
-          emitError(msg, 'opencode_event_stream')
-          sse.push(null)
-          return
+        events.cancel()
+        throw error
+      }
+      // The prompt must not reject into an unhandled rejection while streaming.
+      promptPromise.catch(() => {})
+
+      // `message.part.delta` carries no part type — its `field` is `"text"`
+      // even for reasoning. The preceding `message.part.updated` for the same
+      // partID does carry it, so track each part's type and forward only
+      // answer text.
+      const partTypes = new Map()
+      let promptError
+
+      for (;;) {
+        const frame = await events.nextFrame()
+        if (frame === undefined) break
+        const type = frame.type ?? ''
+        const props = frame.properties ?? {}
+
+        if (type === 'message.part.delta') {
+          if (partTypes.get(props.partID) !== 'text') continue
+          const delta = props.delta
+          if (typeof delta === 'string' && delta.length > 0) emitDelta(delta)
+        } else if (type === 'message.part.updated') {
+          const part = props.part
+          if (typeof part?.id === 'string' && typeof part?.type === 'string') {
+            partTypes.set(part.id, part.type)
+          }
+        } else if (type === 'session.idle') {
+          // A turn spans several steps when OpenCode runs tools, so a
+          // step-finish is not the end of the answer. session.idle is.
+          break
+        } else if (type === 'message.updated') {
+          const info = props.info
+          if (info?.error !== undefined) {
+            const errMsg = typeof info.error === 'object' && info.error !== null
+              ? JSON.stringify(info.error).slice(0, 300)
+              : String(info.error)
+            promptError = new Error(`opencode model error: ${errMsg}`)
+            break
+          }
         }
       }
+      events.cancel()
 
+      let usage
       try {
-        const result = await promptPromise
-        usageFromPrompt = result.usage
+        usage = (await promptPromise).usage
       } catch (error) {
-        const msg = error instanceof Error ? error.message : String(error)
-        if (!(signal?.aborted)) {
-          emitError(msg, 'opencode_upstream')
-        }
-        sse.push(null)
+        // The session may be unusable; start the next turn from a fresh one.
+        forgetSession(key)
+        promptError = promptError ?? (error instanceof Error ? error : new Error(String(error)))
+      }
+      if (promptError !== undefined) {
+        if (!(signal?.aborted)) emitError(promptError.message, 'opencode_upstream')
         return
       }
 
@@ -207,14 +210,15 @@ export async function bridgeOpenCodeToOpenAISSE(params) {
         sse.push(null)
         return
       }
-      emitFinish('stop', usageFromPrompt)
+      emitFinish('stop', usage)
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error)
       logger?.error?.('dsh-opencode-zen-connect: stream bridge failed', error)
       if (!(signal?.aborted)) {
         emitError(msg, 'opencode_bridge')
+      } else {
+        sse.push(null)
       }
-      sse.push(null)
     }
   })()
 

@@ -2,7 +2,7 @@
   "name": "dsh-opencode-zen-connect",
   "displayName": "DSH OpenCode Zen Connect",
   "description": "把本机 OpenCode 的免费模型（OpenCode Zen 免费层）接入 DeepSeek Harness —— 零配置、零费用、带推理强度档位。 Bring OpenCode's free models into DSH with zero configuration, free-only model discovery, and reasoning-effort tiers.",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "author": "wangzhongqing",
   "license": "MIT",
   "repository": {

@@ -9,7 +9,9 @@
 <p align="center">
   <a href="README.md">中文</a> ·
   <a href="#install">Install</a> ·
+  <a href="#who-runs-what--dsh-or-opencode">Who runs what</a> ·
   <a href="#how-it-works">How it works</a> ·
+  <a href="#acknowledgements">Acknowledgements</a> ·
   <a href="#troubleshooting">Troubleshooting</a>
 </p>
 
@@ -18,6 +20,67 @@
 A standalone [DeepSeek Harness (DSH)](https://github.com/deepseek-ai/deepseek-harness) bundle plugin. It exposes the **free models** of the locally installed [OpenCode](https://opencode.ai) CLI (`deepseek-v4.1-flash-free`, `glm-5.3-flash-free`, `big-pickle`, `hy4-flash-free`, `flint-40b-free`, `longcat-2.5-free`, …) in DSH's model picker — no API key, no sign-in, no cost.
 
 The plugin **starts or reuses** a local `opencode serve` (127.0.0.1:40961) and bridges its event stream to OpenAI-compatible SSE through a loopback shim, which DSH's pi-ai adapter consumes. Nothing goes through a third-party relay.
+
+## Who runs what — DSH or OpenCode?
+
+This is the first thing to get straight, because it decides which DSH capabilities survive and which do not.
+
+**Both inference and tool execution happen inside the OpenCode process. DSH only asks, renders and consumes the stream.** Evidence (the `bash` tool printing its own `PPID`):
+
+```
+PID  PPID COMMAND
+72854     1 /Users/zhongqing/.local/bin/opencode serve --port 40961
+82735 72854 /bin/zsh -c ps -o pid,ppid,command -p $$,$PPID ...
+```
+
+The tool subprocess's parent is `opencode serve`, not DSH. Concretely:
+
+| Step | Executed by |
+|---|---|
+| Picking a model, sending the question, rendering the reply | **DSH** |
+| Inference (token generation) | **OpenCode** → upstream gateway |
+| Multi-turn context storage | **OpenCode**'s session |
+| Tool calls and execution (`bash`/`read`/`edit`…) | **OpenCode**'s own tools, inside the session's `directory` |
+| Permission decisions | **OpenCode**'s permission system |
+
+So this plugin is essentially **a translator**: it turns DSH's OpenAI-shaped request into an OpenCode session API call, then turns OpenCode's event stream back into OpenAI SSE. It does not — cannot — inject DSH's own tools into the model. `POST /session/{id}/message` accepts `tools` only as `{toolName: boolean}` toggles, never arbitrary tool schemas.
+
+Three consequences you must know:
+
+1. **DSH's tools are not in play — OpenCode's same-named tools are.** `bash`/`read`/`edit` share names but not implementations. DSH's `bash` has its own sandbox and approval policy; here OpenCode simply spawns a `zsh`.
+2. **Permissions belong to OpenCode, not DSH.** DSH's `--approval-policy` has **no authority** over tool calls on the OpenCode side. To tighten them you must change OpenCode's own permission config.
+3. **Only DSH's conversational shell lives in DSH**: session list, message history, attachments, UI cards. What the model remembers and which commands it ran is known only to OpenCode.
+
+This is also why no amount of patching makes DSH's tools available to these free models — the path does not exist architecturally.
+
+## Acknowledgements
+
+The core idea and the first implementation come from [sanser9/dsh-opencode-connect](https://github.com/sanser9/dsh-opencode-connect) (MIT). This repository is a fork that adds four fixes on top: multi-turn context, tool working directory, event-stream subscription, and message shaping.
+
+Two other DSH community plugins contributed no code, but their failures are the premise that made this route findable. They deserve explicit credit:
+
+**[viztor/dsh-opencode-patch](https://github.com/viztor/dsh-opencode-patch)** — took the path of "patch the gateway headers inside DSH's pi-ai adapter": forge the `User-Agent`, inject a real `ses_…` session id, reconstruct parent-session lineage, and append the `read`/`bash` tool schemas the free tier demands. The author then honestly recorded the outcome in the README — with everything in place, Zen's `-free` models **still return `403 FreeTierError` outside OpenCode**, while the identical request against a paid model returns `200`:
+
+> The gate is not in the request. Measured.
+
+That single sentence saved the most expensive hours of this project. The reason this plugin never attempts header forgery is precisely that record.
+
+**[jiujiezongheti/zen-useragent](https://github.com/jiujiezongheti/zen-useragent)** — approached the same boundary from the opposite side. It patches `llm-pi-ai` and `pi-ai` on disk and narrows the free-tier conditions to three: UA starting with `opencode/`, `x-opencode-session` naming a session the account already knows, and `body.tools` containing a function tool called `read`. That inference has real value — it bounds the candidate space of "what the gateway actually inspects" — and this plugin's understanding of request shape draws on it.
+
+But its conclusion is falsifiable, and we falsified it point by point:
+
+| zen-useragent's claim | Measured |
+|---|---|
+| All three conditions ⇒ 200 | All three satisfied; `curl`, `node` and `bun` all get `429 FreeUsageLimitError`, `Retry-After: 36501` |
+| The free tier requires no auth | `Bearer public`, a real `oc_sk_…` key, and no header at all — all 429 |
+| The difference is in the headers | Byte-level ClientHello comparison: cipher-suite list, extension order, JA3 all identical — still one 200 and one 429 |
+| — | **Same second, same IP, same session**: the official `opencode` CLI gets 200 every time; every other client gets 429 every time |
+
+Its own note that "a self-made session always 403s, you must use a session the account knows" suggests the author reached a 403, missed the cause, and kept adding to the request. Adding to it forever terminates in nothing, because what is being judged is not what the request carries — it is **whether the connection belongs to opencode's own process**.
+
+Which is why this plugin exists: since forged requests cannot pass, do not forge — **actually run an opencode and let it make the request**. `opencode serve`'s session API carries the full identity inherently; the request originates from it, and the free tier lets it through.
+
+Each of those two repositories proves the same boundary from a different direction: dsh-opencode-patch falsified "fixing the headers is enough" by direct experiment, and zen-useragent triangulated the boundary by ablation. Without both records, the obvious thing to try would be header patching — and that road is closed.
 
 ## Risk notice
 
@@ -78,6 +141,8 @@ dsh plugin install "$PWD"
 Then **restart DSH**. An `OpenCode` group appears in the model picker.
 
 ## How it works
+
+> Want the short answer to "is DSH executing this, or OpenCode?" — see [Who runs what](#who-runs-what--dsh-or-opencode), which includes the `ps` output.
 
 ```text
 DSH model picker

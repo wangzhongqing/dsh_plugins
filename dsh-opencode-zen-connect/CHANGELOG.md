@@ -1,5 +1,61 @@
 # Changelog
 
+## 0.2.1 — 2026-11-20
+
+修复两个让免费模型实际不可用的结构性问题，并顺带修掉三个语义错误。
+
+### 修复
+
+- **多轮真的能续上下文**：旧实现每个请求都 `POST /session` 新建会话，再把整段历史压成
+  `[1] user: …` / `[2] assistant: …` 的纯文本重发，所以只有第一轮有记忆。现在
+  `src/session-registry.js` 以「工作目录 + 首个人类问题」的哈希标识一个 DSH 对话，同一
+  对话的所有轮次复用同一个 OpenCode session，只发本轮新问题。
+- **能调用本地工具**：`POST /session/{id}/message` 的 `tools` 字段只接受 `{工具名: 布尔}`
+  开关，无法携带自定义 schema，所以 DSH 自己的工具传不下去。改为建 session 时带
+  `?directory=<DSH 工作目录>`，让 OpenCode 自带的 13 个工具（`bash`/`read`/`glob`/`grep`/
+  `edit`/`write`/`task`/`webfetch`/`websearch`/`todowrite`/`skill`/`question`/`invalid`）
+  在该目录执行。
+- **收得到流式增量**：`/event?sessionID=<id>` 回了 `server.connected` 之后就再也不推
+  `message.part.delta`；而 `/event` 不带 `directory` 时只推服务器自己目录下会话的事件。
+  改为 `GET /event?directory=<工作目录>` 订阅，再按 `properties.sessionID` 手工丢弃别的
+  会话的帧；并在发 prompt 之前就确认订阅已生效（服务端不重放事件）。新增
+  `src/event-stream.js`。
+- **回答不再答非所问**：DSH 不只发一条 user 消息 —— 真问题之后还会追加自己的 cwd
+  system-reminder、技能清单、标题生成请求。旧实现取「最后一条 user」就取到技能清单，
+  模型于是长篇讲某个 skill。新增 `src/message-shape.js`，按 `INJECTED_PATTERNS` 跳过
+  注入块取真实问题，system prompt 改用 `system` 字段单独下发。
+- **思考过程不再混进正文**：`message.part.delta` 的 `field` 恒为 `"text"`（连 reasoning
+  part 也是），所以按 `field` 过滤无效。改为用前序 `message.part.updated` 的
+  `part.type` 建 `partID → type` 映射，只转发 `text` 类型。
+- **终止信号改为 `session.idle`**：带工具的回合有多个 step（`step-start → reasoning →
+  tool → step-finish → …`），在 `step-finish` 处结束会截断答案。
+- **message body 的 model 改为嵌套**：`model: { providerID, modelID }`；旧实现传的是扁平
+  顶层 `providerID`/`modelID`，不符合 schema。
+
+### 新增
+
+- `src/message-shape.js`、`src/session-registry.js`、`src/event-stream.js` 三个模块，以及
+  `tests/message-shape.test.mjs`（10 个用例）。测试总数 16 → 26，全绿。
+- `opencode-server.js` 新增 `sendOpenCodeMessage()`，`createOpenCodeSession()` 增加可选
+  `workdir` 形参；删除已被 `event-stream.js` 取代的 `streamOpenCodeSessionEvents()`。
+
+### 文档
+
+- README / README.en.md 新增「谁在执行？DSH 还是 OpenCode？」一节，用 `ps` 实测输出说明
+  推理与工具执行都在 OpenCode 进程内，并列出由此产生的三个后果（DSH 工具不可用、权限
+  不由 DSH 管、只有对话外壳在 DSH 里）。
+- README / README.en.md 新增「致谢」一节，记录 upstream `sanser9/dsh-opencode-connect`，
+  以及 `viztor/dsh-opencode-patch` 与 `jiujiezongheti/zen-useragent` 两个仓库的作用——它们
+  没有贡献代码，但各自用不同方式证伪了「改请求头就能过免费层」，是这条路能被找到的前提。
+
+### 验证
+
+- `17*23` → `391`（`cost 0`），真实宿主 headless 端到端通过。
+- 「用 bash 列出本目录」→ 正确答出 DSH 工作目录里的 `marker.txt`。
+- 三轮对话：`OK` → `4242` → `/Users/zhongqing/Software/Personal`（会话复用 + 工具落在正确目录）。
+- 工具执行方实测：`ps -o pid,ppid,command` 输出 `82735 72854 /bin/zsh -c ...`，父进程
+  `72854` 即 `opencode serve --port 40961` —— 工具由 OpenCode 执行，不是 DSH。
+
 ## 0.2.0 — 2026-11-18
 
 从 `sanser9/dsh-opencode-connect` fork 到第 `wangzhongqing/dsh_plugins` 仓库，身份改名为

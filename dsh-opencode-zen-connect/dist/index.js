@@ -19,6 +19,7 @@ import {
   fetchOpenCodeCatalog,
 } from './opencode-server.js'
 import { bridgeOpenCodeToOpenAISSE } from './stream-bridge.js'
+import { forgetAllSessions } from './session-registry.js'
 import { reasoningFromVariants } from './reasoning.js'
 
 export const name = 'llm-opencode-zen'
@@ -247,6 +248,7 @@ export function apply(ctx, _config) {
       stopped = true
       if (refreshTimer !== undefined) clearInterval(refreshTimer)
       releaseAdapter?.()
+      forgetAllSessions()
       void shim?.close()
       void server?.close()
     })

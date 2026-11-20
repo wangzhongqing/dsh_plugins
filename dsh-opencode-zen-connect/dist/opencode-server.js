@@ -140,9 +140,16 @@ export async function ensureOpenCodeServer(logger) {
   }
 }
 
-/** Create an OpenCode session. Returns the session id. */
-export async function createOpenCodeSession(baseUrl, title, signal) {
-  const res = await fetch(`${baseUrl}/session`, {
+/**
+ * Create an OpenCode session. Returns the session id.
+ *
+ * `workdir`, when given, becomes the session's `directory`: OpenCode resolves
+ * its built-in tools (bash/read/glob/grep/edit/write/...) against it, which is
+ * what puts them in the DSH workspace instead of the server's own directory.
+ */
+export async function createOpenCodeSession(baseUrl, title, signal, workdir) {
+  const query = workdir === undefined ? '' : `?directory=${encodeURIComponent(workdir)}`
+  const res = await fetch(`${baseUrl}/session${query}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ title }),
@@ -190,68 +197,35 @@ export async function fetchOpenCodeCatalog(baseUrl, signal) {
 }
 
 /**
- * An async generator over OpenCode SSE events scoped to one session.
- * Yields each `message.part.delta` event's delta text as it arrives.
+ * Post one message to a session and resolve with its usage.
+ *
+ * `workdir` must match the session's directory; OpenCode resolves the prompt
+ * (and the tools it triggers) against it. The response settles only after the
+ * whole turn — every step, including tool calls — has finished.
  */
-export async function* streamOpenCodeSessionEvents(baseUrl, sessionId, signal) {
-  const res = await fetch(`${baseUrl}/event?sessionID=${encodeURIComponent(sessionId)}`, { signal })
-  if (!res.ok || res.body === null) {
-    throw new Error(`opencode event stream: HTTP ${res.status}`)
+export async function sendOpenCodeMessage(baseUrl, sessionId, workdir, payload, signal) {
+  const query = workdir === undefined ? '' : `?directory=${encodeURIComponent(workdir)}`
+  const res = await fetch(`${baseUrl}/session/${sessionId}/message${query}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+    signal,
+  })
+  if (!res.ok) {
+    const bodyText = await res.text().catch(() => '')
+    throw new Error(`opencode message failed: HTTP ${res.status} ${bodyText.slice(0, 300)}`)
   }
-
-  const reader = res.body.getReader()
-  let buffer = ''
-
-  while (true) {
-    const { value, done } = await reader.read()
-    if (done) break
-    buffer += new TextDecoder().decode(value, { stream: true })
-
-    let sep
-    while ((sep = buffer.indexOf('\n\n')) !== -1) {
-      const frame = buffer.slice(0, sep)
-      buffer = buffer.slice(sep + 2)
-
-      const dataLines = frame
-        .split('\n')
-        .filter(line => line.startsWith('data:'))
-        .map(line => line.slice(5).trimStart())
-        .join('')
-
-      if (dataLines.length === 0) continue
-      let event
-      try {
-        event = JSON.parse(dataLines)
-      } catch {
-        continue
-      }
-
-      const type = event.type ?? ''
-      const props = event.properties ?? {}
-
-      if (type === 'message.part.delta') {
-        const delta = props.delta
-        if (typeof delta === 'string' && delta.length > 0) {
-          yield delta
-        }
-      } else if (type === 'message.part.updated') {
-        const part = props.part
-        if (part?.type === 'step-finish') {
-          return
-        }
-      } else if (type === 'session.idle') {
-        return
-      } else if (type === 'message.updated') {
-        const info = props.info
-        if (info?.error !== undefined) {
-          const errMsg = typeof info.error === 'object' && info.error !== null
-            ? JSON.stringify(info.error).slice(0, 300)
-            : String(info.error)
-          throw new Error(`opencode model error: ${errMsg}`)
-        }
-      }
-    }
-
-    if (signal?.aborted) break
+  const body = await res.json()
+  if (body.info?.error !== undefined) {
+    const data = body.info.error.data
+    throw new Error(
+      `opencode model error: ${data?.message ?? body.info.error.name} (status ${data?.statusCode})`,
+    )
+  }
+  const tokens = body.info?.tokens
+  return {
+    usage: tokens === undefined
+      ? undefined
+      : { input: tokens.input ?? 0, output: tokens.output ?? 0 },
   }
 }

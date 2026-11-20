@@ -65,9 +65,22 @@ Two other DSH community plugins contributed no code, but their failures are the 
 
 That single sentence saved the most expensive hours of this project. The reason this plugin never attempts header forgery is precisely that record.
 
+One note on evidence strength: **that is its measurement, not mine.** I did not reproduce `403 FreeTierError` on my machine — I reproduced a different form of the same wall, `429 FreeUsageLimitError`. The distinction matters: `403` means "this request is not recognised as a legitimate client"; `429` means "recognised, but the free quota is exhausted." My account/egress was in the exhausted state, so every attempt returned 429. That is also precisely why **only the "go through the opencode process" route could be verified as working** — other routes stop at 429 or 403 regardless of what you change, so you cannot tell "headers still wrong" apart from "quota exhausted."
+
+`dsh-opencode-patch` also measured its own claim, and so did I: running its plugin row with its documented provider configuration inside DSH produced a result consistent with its record —
+
+```
+[dsh-opencode-patch] active for providers [opencode, opencode-go]
+→ 429: {"type":"error","error":{"type":"FreeUsageLimitError",
+   "message":"Free usage limit reached. Free models work in OpenCode (https://opencode.ai);
+   subscribe to OpenCode Go to keep going: https://opencode.ai/go"},"code":"FREE_TIER","status":429}
+```
+
+(It returns 429 here where the README records 403 — same wall, depending on whether the account is currently judged "quota exhausted" or "unauthorised client".)
+
 **[jiujiezongheti/zen-useragent](https://github.com/jiujiezongheti/zen-useragent)** — approached the same boundary from the opposite side. It patches `llm-pi-ai` and `pi-ai` on disk and narrows the free-tier conditions to three: UA starting with `opencode/`, `x-opencode-session` naming a session the account already knows, and `body.tools` containing a function tool called `read`. That inference has real value — it bounds the candidate space of "what the gateway actually inspects" — and this plugin's understanding of request shape draws on it.
 
-But its conclusion is falsifiable, and we falsified it point by point:
+But its conclusion is falsifiable, and we falsified it point by point. Below are **real runs inside the DSH host** (`dsh --profile headless --patch …`), not inferences from its README and not bare HTTP:
 
 | zen-useragent's claim | Measured |
 |---|---|
@@ -75,6 +88,25 @@ But its conclusion is falsifiable, and we falsified it point by point:
 | The free tier requires no auth | `Bearer public`, a real `oc_sk_…` key, and no header at all — all 429 |
 | The difference is in the headers | Byte-level ClientHello comparison: cipher-suite list, extension order, JA3 all identical — still one 200 and one 429 |
 | — | **Same second, same IP, same session**: the official `opencode` CLI gets 200 every time; every other client gets 429 every time |
+
+Configured its documented way inside DSH — `llm-pi-ai` provider `opencodezen` with `baseURL: https://opencode.ai/zen/v1`, `User-Agent: opencode/1.18.18`, and a real `ses_…` session — and loaded through its own plugin row:
+
+```
+[dsh-plugin-zen-useragent] zen session: ses_e1286e887ffepf5z6MA2f3JUPJ (from opencode client DB)
+[dsh-plugin-zen-useragent] already patched (.../dsh-llm-pi-ai/lib/index.js)
+[dsh-plugin-zen-useragent] could not locate @earendil-works/pi-ai/api/openai-completions.js — tools fix NOT applied
+→ 429: {"type":"error","error":{"type":"FreeUsageLimitError",
+   "message":"Free usage limit reached. Free models work in OpenCode (https://opencode.ai);
+   subscribe to OpenCode Go to keep going: https://opencode.ai/go"},"code":"QUOTA"}
+```
+
+Note that third line: **its own third condition — injecting `read` into `tools` — never took effect.** On that machine it could not find `@earendil-works/pi-ai/api/openai-completions.js`, reported `tools fix NOT applied`, and sent the request anyway. So only two of its three conditions were actually live, and those two did not stop the 429.
+
+At the same moment, on the same machine, this plugin's control run (going through `opencode serve`):
+
+```
+{"type":"text","text":"MINE_WORKS"}
+```
 
 Its own note that "a self-made session always 403s, you must use a session the account knows" suggests the author reached a 403, missed the cause, and kept adding to the request. Adding to it forever terminates in nothing, because what is being judged is not what the request carries — it is **whether the connection belongs to opencode's own process**.
 

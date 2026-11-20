@@ -66,9 +66,22 @@ PID  PPID COMMAND
 
 一句话省掉后来者最贵的那段时间。本插件之所以从一开始就不去改 header，正是因为这份记录。
 
+需要说明证据强度：这条**是它的实测记录，不是我的**。我没有在自己的机器上复现 `403 FreeTierError`——复现的是同一堵墙的另一种形态（`429 FreeUsageLimitError`）。两者的区别值得留意：`403` 是「请求不被认作合法客户端」，`429` 是「认了，但免费额度已用尽」。我这边账号/出口的免费额度当时处于耗尽状态，所以拿到的总是 429；这也正是为什么**只有「走 opencode 进程」这条路能被验证可用**——其他路径无论改了什么都停在 429 或 403，无法区分是「头没改对」还是「额度用尽」。
+
+`dsh-opencode-patch` 自己也做了实测，也就是下面这段——我用它自己的插件行、按它 README 的配置方式在 DSH 里跑了一遍，得到与它记载一致的结论：
+
+```
+[dsh-opencode-patch] active for providers [opencode, opencode-go]
+→ 429: {"type":"error","error":{"type":"FreeUsageLimitError",
+   "message":"Free usage limit reached. Free models work in OpenCode (https://opencode.ai);
+   subscribe to OpenCode Go to keep going: https://opencode.ai/go"},"code":"FREE_TIER","status":429}
+```
+
+（它返回 429 而 README 记的是 403，原因同上：同一堵墙，取决于该账号当时是被判「额度耗尽」还是「非授权客户端」。）
+
 **[jiujiezongheti/zen-useragent](https://github.com/jiujiezongheti/zen-useragent)** — 从相反的方向逼近同一个边界。它对 `llm-pi-ai` 与 `pi-ai` 落盘打补丁，把免费层的判定条件收敛为三条：UA 以 `opencode/` 开头、`x-opencode-session` 是账号已知会话、`body.tools` 含名为 `read` 的工具。这套推断本身很有价值——它划定了「网关到底在看什么」的候选范围，本插件对请求形状的理解也参考了它。
 
-但它给出的结论是可以被证伪的，而我们逐个证伪了：
+但它给出的结论是可以被证伪的，而我们逐个证伪了。下面是**在真实 DSH 宿主里跑 `dsh --profile headless --patch …` 的实测**（不是读 README 推断，也不是只发裸 HTTP）：
 
 | zen-useragent 的判断 | 实测 |
 |---|---|
@@ -76,6 +89,25 @@ PID  PPID COMMAND
 | 免费档不要求认证 | 带 `Bearer public`、带 `oc_sk_…` key、完全不带，三者皆 429 |
 | 差异在请求头 | 逐字节比对 TLS ClientHello：cipher suite 列表、extension 顺序、JA3 全一致，仍一个 200 一个 429 |
 | — | **同一秒、同一 IP、同一会话**：官方 `opencode` CLI 恒 200，其他一切客户端恒 429 |
+
+在 DSH 里按它 README 的方式配好 `llm-pi-ai` 的 `opencodezen` provider（`baseURL: https://opencode.ai/zen/v1` + `User-Agent: opencode/1.18.18` + 真实 `ses_…` 会话），用它自己的插件行加载，结果：
+
+```
+[dsh-plugin-zen-useragent] zen session: ses_e1286e887ffepf5z6MA2f3JUPJ (from opencode client DB)
+[dsh-plugin-zen-useragent] already patched (.../dsh-llm-pi-ai/lib/index.js)
+[dsh-plugin-zen-useragent] could not locate @earendil-works/pi-ai/api/openai-completions.js — tools fix NOT applied
+→ 429: {"type":"error","error":{"type":"FreeUsageLimitError",
+   "message":"Free usage limit reached. Free models work in OpenCode (https://opencode.ai);
+   subscribe to OpenCode Go to keep going: https://opencode.ai/go"},"code":"QUOTA"}
+```
+
+注意第三行：**它连自己声明的第三个条件（`tools` 里补 `read`）都没能生效**——在那台机器上找不到 `@earendil-works/pi-ai/api/openai-completions.js`，插件自己报告 `tools fix NOT applied`，然后继续发请求。也就是说它的三条件里实际只有两条在线，而这两条也拦不住 429。
+
+同一时刻、同一台机器，本插件（走 `opencode serve`）的对照组：
+
+```
+{"type":"text","text":"MINE_WORKS"}
+```
 
 它 README 里「自造会话必 403、必须用账号已知会话」这条经验，说明作者已经摸到过 403 但没找到成因，于是不断往请求里加料。加到最后一无所有——因为判定的不是请求携带的内容，而是**这条连接背后是不是 opencode 自己的进程**。
 
